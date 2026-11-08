@@ -1,0 +1,58 @@
+FRIDGECHEF — RECOMMENDATION RUN
+Generated: 2026-10-25 19:45:14 Eastern Daylight Time
+Data file: C:\Users\pksma\OneDrive\Senior Year Files\COMP 365\Team Project\FridgeChef_Checkpoint1\recipes.csv
+Unique recipe records loaded: 50
+
+METHOD: JACCARD
+Recipe records loaded: 50
+Pantry: egg, garlic, pasta, spinach
+------------------------------------------------------------------------------
+1. Spaghetti Frittata | score=0.300 | category=dinner
+   Matched: egg, garlic, spinach
+   Missing from pantry: marinara sauce, olive oil, onion, parmesan, spaghetti, sun dried tomato
+   Source: https://www.foodnetwork.com/recipes/ellie-krieger/spaghetti-frittata-recipe-1953062
+2. The Best Chicken Parmesan | score=0.111 | category=dinner
+   Matched: egg, garlic
+   Missing from pantry: all purpose flour, basil, boneless skinless chicken breast, crushed red pepper flake, diced tomato, dried oregano, freshly ground black pepper, grated parmesan, kosher salt, milk, olive oil, plain breadcrumb, spaghetti, whole milk mozzarella
+   Source: https://www.foodnetwork.com/recipes/food-network-kitchen/the-best-chicken-parmesan-7194683
+3. Italian Wedding Soup | score=0.091 | category=dinner
+   Matched: egg, garlic
+   Missing from pantry: baby spinach, carrot, celery, chicken sausage, dry white wine, fresh dill, fresh parsley leave, fresh white bread crumb, freshly ground black pepper, ground chicken, homemade chicken stock, kosher salt, milk, olive oil, parmesan, pecorino romano, small pasta, yellow onion
+   Source: https://www.foodnetwork.com/recipes/ina-garten/italian-wedding-soup-recipe-1945517
+4. Mini Frittatas | score=0.091 | category=breakfast
+   Matched: egg
+   Missing from pantry: fresh italian parsley leave, freshly grated parmesan, freshly ground black pepper, ham, nonstick vegetable oil cooking spray, salt, whole milk
+   Source: https://www.foodnetwork.com/recipes/giada-de-laurentiis/mini-frittatas-recipe-1944892
+5. White Bean Pomegranate Crostini | score=0.083 | category=appetizer
+   Matched: garlic
+   Missing from pantry: cannellini bean, chopped parsley, honey, olive oil, pepper, pomegranate seed, salt, sherry vinegar
+   Source: https://www.foodnetwork.com/recipes/food-network-kitchen/white-bean-pomegranate-crostini-3562314
+
+Interpretation note: scores measure ingredient-text similarity/overlap, not recipe quality, nutrition, allergies, or food safety.
+
+METHOD: TFIDF
+Recipe records loaded: 50
+Pantry: egg, garlic, pasta, spinach
+------------------------------------------------------------------------------
+1. Spaghetti Frittata | score=0.312 | category=dinner
+   Matched: egg, garlic, spinach
+   Missing from pantry: marinara sauce, olive oil, onion, parmesan, spaghetti, sun dried tomato
+   Source: https://www.foodnetwork.com/recipes/ellie-krieger/spaghetti-frittata-recipe-1953062
+2. Italian Wedding Soup | score=0.270 | category=dinner
+   Matched: egg, garlic
+   Missing from pantry: baby spinach, carrot, celery, chicken sausage, dry white wine, fresh dill, fresh parsley leave, fresh white bread crumb, freshly ground black pepper, ground chicken, homemade chicken stock, kosher salt, milk, olive oil, parmesan, pecorino romano, small pasta, yellow onion
+   Source: https://www.foodnetwork.com/recipes/ina-garten/italian-wedding-soup-recipe-1945517
+3. Whole-Wheat Spaghetti with Lemon, Basil, and Salmon | score=0.261 | category=dinner
+   Matched: none
+   Missing from pantry: caper, chopped fresh basil leave, extra virgin olive oil, fresh baby spinach leave, freshly ground black pepper, garlic clove minced, lemon juice, lemon zested, olive oil, salmon piece, salt, whole wheat spaghetti pasta
+   Source: https://www.foodnetwork.com/recipes/giada-de-laurentiis/whole-wheat-spaghetti-with-lemon-basil-and-salmon-recipe-1937647
+4. Skillet Pasta and Beef Dinner | score=0.251 | category=dinner
+   Matched: none
+   Missing from pantry: jar rag old world style pasta sauce, lean ground beef, shredded part skim mozzarella cheese, uncooked whole wheat rotini pasta, water
+   Source: https://www.foodnetwork.com/recipes/skillet-pasta-and-beef-dinner-recipe-1970893
+5. Roasted Spring Veggies and Dip | score=0.110 | category=side
+   Matched: spinach
+   Missing from pantry: chopped fresh chive, chopped fresh parsley, fresh basil leave, freshly ground black pepper, honey, kosher salt, lemon zest, mayonnaise, minced fresh thyme, multicolored carrot, olive oil, parsnip, red onion, shredded parmesan, sour cream
+   Source: https://www.foodnetwork.com/recipes/ree-drummond/roasted-spring-veggies-and-dip-8364104
+
+Interpretation note: scores measure ingredient-text similarity/overlap, not recipe quality, nutrition, allergies, or food safety.
