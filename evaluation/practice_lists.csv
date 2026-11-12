@@ -1,0 +1,11 @@
+list_id,group,ingredients
+P01,normal,"eggs, spinach, garlic, pasta, tomatoes"
+P02,normal,"chicken, carrots, onion, celery, chicken stock, noodles"
+P03,normal,"potatoes, bacon, butter, scallions, honey"
+P04,unsupported_cuisine,"kimchi, tofu, gochujang, scallions, sesame oil"
+P05,unsupported_cuisine,"firm tofu, miso paste, bok choy, rice vinegar, ginger"
+P06,unsupported_cuisine,"kimchi, ramen noodles, gochujang, sesame seeds, eggs"
+P07,edge_case, tomato
+P08,edge_case,"eggs, milk, butter, flour, sugar, salt, black pepper, olive oil, water, garlic, onion, carrots, celery, spinach, tomatoes, potatoes, chicken, ground beef, bacon, pasta, rice, beans, corn, cheddar cheese, parmesan, mushrooms, lemon, apples, basil, parsley"
+P09,edge_case,"tomatos, spinich, garlick, onions"
+P10,edge_case,
