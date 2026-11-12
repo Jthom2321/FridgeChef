@@ -129,7 +129,17 @@ def rank_recipes(pantry_text, recipes, method, limit):
                 sorted(ingredients - pantry_set),
                 sorted(ingredients & pantry_set),
             ))
-    else:
+    elif method == "coverage":
+        # Ingredient coverage is the fraction of each recipe already in the pantry.
+        for recipe in recipes:
+            ingredients = set(recipe["ingredient_list"])
+            score = len(pantry_set & ingredients) / len(ingredients) if ingredients else 0.0
+            ranked.append((
+                score, recipe,
+                sorted(ingredients - pantry_set),
+                sorted(ingredients & pantry_set),
+            ))
+    elif method == "tfidf":
         documents = [" ".join(recipe["ingredient_list"]) for recipe in recipes]
         vectorizer = TfidfVectorizer(token_pattern=r"(?u)\b\w+\b")
         matrix = vectorizer.fit_transform(documents + [" ".join(pantry)])
@@ -142,82 +152,89 @@ def rank_recipes(pantry_text, recipes, method, limit):
                 sorted(ingredients & pantry_set),
             ))
 
+    if method not in ("jaccard", "tfidf", "coverage"):
+        raise ValueError(f"Unknown method: {method}")
     ranked.sort(key=lambda item: (-item[0], item[1]["title"].casefold()))
     return pantry, ranked[:limit]
 
 
-def render_method(pantry_text, recipes, method, limit):
-    pantry, results = rank_recipes(pantry_text, recipes, method, limit)
-    lines = [
-        f"METHOD: {method.upper()}",
-        f"Recipe records loaded: {len(recipes)}",
-        "Pantry: " + ", ".join(pantry),
-        "-" * 78,
-    ]
-    for number, (score, recipe, missing, matched) in enumerate(results, 1):
-        lines.append(f"{number}. {recipe['title']} | score={score:.3f} | category={recipe['category']}")
-        lines.append("   Matched: " + (", ".join(matched) if matched else "none"))
-        lines.append("   Missing from pantry: " + (", ".join(missing) if missing else "none"))
+def render_method(ingredients, method, limit, db_path, have_basics=False):
+    """Render the same recommendations returned to the website and tests."""
+    from recommend import recommend
+
+    results = recommend(ingredients, method=method, top_n=limit,
+                        have_basics=have_basics, db_path=db_path)
+    lines = [f"METHOD: {method.upper()}", "-" * 78]
+    if not results:
+        lines.append("No matching recipes found. Try common ingredient names or add more ingredients.")
+    for number, recipe in enumerate(results, 1):
+        lines.append(f"{number}. {recipe['title']} | score={recipe['score']:.3f} | category={recipe['category']}")
+        lines.append("   Matched: " + (", ".join(recipe["matched_ingredients"]) or "none"))
+        lines.append("   Missing from pantry: " + (", ".join(recipe["missing_ingredients"]) or "none"))
+        lines.append(f"   Ingredient coverage: {recipe['ingredient_coverage']:.0%}")
         lines.append("   Source: " + recipe["url"])
     lines.append("")
     return "\n".join(lines)
 
 
 def main():
+    from database import DEFAULT_DB, create_database, load_db_recipes, preferred_csv
+
     script_dir = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser(
-        description="FridgeChef recipe matcher: Jaccard baseline and TF-IDF cosine similarity."
+        description="FridgeChef: database-backed recipe recommendations."
     )
-    parser.add_argument(
-        "--ingredients",
-        default="eggs, spinach, garlic, pasta",
-        help="Comma-separated ingredients available to the user.",
-    )
-    parser.add_argument(
-        "--method",
-        choices=["both", "jaccard", "tfidf"],
-        default="both",
-        help="Which recommendation method to run. Default: both.",
-    )
-    parser.add_argument(
-        "--data",
-        default=str(script_dir / "recipes.csv"),
-        help="Path to the recipe CSV. Defaults to recipes.csv beside this script.",
-    )
-    parser.add_argument("--top", type=int, default=5, help="Number of recommendations per method.")
-    parser.add_argument(
-        "--output",
-        default=str(script_dir / "sample_output.txt"),
-        help="File to overwrite with the latest results. Defaults to sample_output.txt beside this script.",
-    )
+    parser.add_argument("--ingredients", default="eggs, spinach, garlic, pasta",
+                        help="Comma-separated ingredients available to the user")
+    parser.add_argument("--method", choices=["both", "jaccard", "tfidf", "coverage"],
+                        default="both", help="Which ranking method to use")
+    parser.add_argument("--top", type=int, default=5,
+                        help="Number of recommendations (1-25)")
+    parser.add_argument("--db", default=str(DEFAULT_DB),
+                        help="Path to the SQLite database")
+    parser.add_argument("--data", default=None,
+                        help="Import this CSV into the database before recommending")
+    parser.add_argument("--rebuild", action="store_true",
+                        help="Rebuild database using recipes_v2.csv if present, else recipes.csv")
+    parser.add_argument("--basics", action="store_true",
+                        help="Assume you have salt, pepper, oil, water, and butter")
+    parser.add_argument("--output", default=str(script_dir / "sample_output.txt"),
+                        help="Text file to save the latest command-line results")
     args = parser.parse_args()
 
-    if args.top < 1:
-        parser.error("--top must be at least 1.")
+    if not 1 <= args.top <= 25:
+        parser.error("--top must be between 1 and 25")
+    try:
+        if args.rebuild or args.data:
+            source = args.data or preferred_csv()
+            count = create_database(source, args.db)
+            print(f"Database refreshed with {count} recipes from {source}\n")
+        elif not Path(args.db).is_file():
+            create_database(db_path=args.db)
 
-    recipes = load_recipes(args.data)
-    methods = ["jaccard", "tfidf"] if args.method == "both" else [args.method]
-    sections = [
-        "FRIDGECHEF — RECOMMENDATION RUN",
-        f"Generated: {datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')}",
-        f"Data file: {Path(args.data).resolve()}",
-        f"Unique recipe records loaded: {len(recipes)}",
-        "",
-    ]
-    for method in methods:
-        sections.append(render_method(args.ingredients, recipes, method, args.top))
-        sections.append(
-            "Interpretation note: scores measure ingredient-text similarity/overlap, "
-            "not recipe quality, nutrition, allergies, or food safety."
-        )
-        sections.append("")
-    output_text = "\n".join(sections).rstrip() + "\n"
-
-    output_path = Path(args.output).expanduser()
-    if not output_path.is_absolute():
-        output_path = script_dir / output_path
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(output_text, encoding="utf-8")
+        count = len(load_db_recipes(args.db))
+        methods = ["jaccard", "tfidf"] if args.method == "both" else [args.method]
+        sections = [
+            "FRIDGECHEF — RECOMMENDATION RUN",
+            f"Generated: {datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')}",
+            f"Database: {Path(args.db).resolve()}",
+            f"Unique recipe records loaded: {count}",
+            "Pantry: " + args.ingredients,
+            f"Assume basics: {'yes' if args.basics else 'no'}",
+            "",
+        ]
+        for method in methods:
+            sections.append(render_method(args.ingredients, method, args.top,
+                                          args.db, args.basics))
+        sections.append("Scores are ingredient-ranking signals, not allergy, nutrition, or food-safety advice.")
+        output_text = "\n".join(sections).rstrip() + "\n"
+        output_path = Path(args.output).expanduser()
+        if not output_path.is_absolute():
+            output_path = script_dir / output_path
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(output_text, encoding="utf-8")
+    except (ValueError, FileNotFoundError, OSError) as exc:
+        parser.exit(2, f"FridgeChef: {exc}\n")
 
     print(output_text, end="")
     print(f"\nUpdated sample output: {output_path.resolve()}")

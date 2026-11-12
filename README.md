@@ -42,3 +42,20 @@ Choose the number of recommendations:
 - Ingredient normalization is a starter implementation and may miss synonyms or interpret ingredient phrases imperfectly.
 - This prototype does not evaluate allergies, nutrition, or food safety.
 - This dataset is not evenly distributed among categories of recipies.
+## Checkpoint 2 backend addition (Seth)
+The CLI now runs on a SQLite database and delegates all recommendations to the
+`recommend()` function in `recommend.py`. The database schema, importer,
+website/test integration instructions, limitations and final dependencies are
+in **[BACKEND_HANDOFF.md](BACKEND_HANDOFF.md)**.
+
+```bash
+python build_db.py             # imports recipes_v2.csv if present; else recipes.csv
+python fridgechef.py --ingredients "eggs, spinach, garlic, pasta" --method coverage --top 3
+python fridgechef.py --ingredients "eggs, spinach, garlic, pasta" --method jaccard --top 3
+python -m unittest discover -s tests -v
+```
+
+Available recommendation methods: `jaccard`, `tfidf`, and `coverage`.
+Use `--basics` to count common pantry staples; the default is off for comparison
+with the original Checkpoint 1 behavior. See `VIDEO_SCRIPT_SETH.md` for the
+backend recording outline.
