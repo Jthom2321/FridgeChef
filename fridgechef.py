@@ -8,37 +8,58 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 
+# Conservative aliases: ingredient families are not interchangeable.
 ALIASES = {
-    "scallions": "green onion",
-    "green onions": "green onion",
-    "spring onions": "green onion",
-    "parm": "parmesan",
-    "parmesan cheese": "parmesan",
-    "chickpeas": "chickpea",
-    "eggs": "egg",
-    "tomatoes": "tomato",
-    "carrots": "carrot",
-    "onions": "onion",
-    "garlic cloves": "garlic",
-    "spinach leaves": "spinach",
-    "pastas": "pasta",
+    "scallions": "green onion", "scallion": "green onion",
+    "green onions": "green onion", "spring onions": "green onion",
+    "spring onion": "green onion", "parm": "parmesan",
+    "parmesan cheese": "parmesan", "garbanzo beans": "chickpea",
+    "garbanzo bean": "chickpea", "chickpeas": "chickpea",
+    "cilantro": "coriander leaf", "coriander leaves": "coriander leaf",
+    "garlic cloves": "garlic", "cloves garlic": "garlic",
+    "clove garlic": "garlic", "bell peppers": "bell pepper",
+    "confectioners sugar": "powdered sugar", "icing sugar": "powdered sugar",
 }
+DESCRIPTORS = set("fresh freshly chopped minced large medium small kosher baby diced sliced grated peeled cracked ground rinsed washed trimmed thawed".split())
+PLURALS = {
+    "leaves": "leaf", "tomatoes": "tomato", "tomatos": "tomato",
+    "potatoes": "potato", "eggs": "egg", "carrots": "carrot",
+    "onions": "onion", "peppers": "pepper", "beans": "bean",
+    "cloves": "clove", "breasts": "breast", "thighs": "thigh",
+    "mushrooms": "mushroom", "berries": "berry", "apples": "apple",
+    "lemons": "lemon", "limes": "lime", "seeds": "seed",
+    "flakes": "flake", "breadcrumbs": "breadcrumb", "pastas": "pasta",
+}
+BASICS = {"salt", "pepper", "black pepper", "oil", "olive oil", "vegetable oil",
+          "canola oil", "water", "butter", "unsalted butter", "salted butter"}
+# Only these qualifiers may be omitted in a close match. Never match by
+# substring: e.g. chicken must not satisfy chicken stock, or milk coconut milk.
+CLOSE_QUALIFIERS = {"yellow", "white", "red", "italian", "flat", "leaf"}
 
 
 def normalize(value):
-    words = re.sub(r"[^a-z0-9 ]", " ", value.lower()).split()
-    phrase = " ".join(words)
-    phrase = ALIASES.get(phrase, phrase)
-    normalized_words = []
-    for word in phrase.split():
-        if len(word) > 4 and word.endswith("oes"):
-            word = word[:-2]
-        elif len(word) > 4 and word.endswith("ies"):
-            word = word[:-3] + "y"
-        elif len(word) > 3 and word.endswith("s") and not word.endswith(("ss", "us", "is")):
-            word = word[:-1]
-        normalized_words.append(word)
-    return " ".join(normalized_words)
+    phrase = " ".join(re.sub(r"[^a-z0-9 ]", " ", value.lower()).split())
+    # Drop only explicitly listed preparation/size descriptors.
+    phrase = " ".join(w for w in phrase.split() if w not in DESCRIPTORS)
+    for alias in sorted(ALIASES, key=len, reverse=True):
+        phrase = re.sub(r"(?<!\w)" + re.escape(alias) + r"(?!\w)", ALIASES[alias], phrase)
+    words = [PLURALS.get(w, w) for w in phrase.split()]
+    if words and words[-1] == "leaf" and any(w in words for w in ("spinach", "basil", "parsley", "mint")):
+        words.pop()
+    return " ".join(words)
+
+
+def ingredients_match(available, required):
+    a, b = set(normalize(available).split()), set(normalize(required).split())
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    return (a < b and b - a <= CLOSE_QUALIFIERS) or (b < a and a - b <= CLOSE_QUALIFIERS)
+
+
+def is_basic(ingredient):
+    return normalize(ingredient) in BASICS
 
 
 def split_ingredients(raw):
@@ -79,7 +100,9 @@ def load_recipes(path):
                 continue
 
             # Rejoin extra columns caused by unquoted commas in an ingredient field.
-            raw_ingredients = ",".join(row[ingredients_index:])
+            raw_ingredients = (",".join(row[ingredients_index:])
+                               if ingredients_index == len(header) - 1
+                               else row[ingredients_index])
             original_ingredients = split_ingredients(raw_ingredients)
             ingredient_list = sorted(
                 {normalize(item) for item in original_ingredients if normalize(item)}
@@ -107,56 +130,72 @@ def load_recipes(path):
     return result
 
 
-def rank_recipes(pantry_text, recipes, method, limit):
-    pantry = sorted({
-        normalize(item.strip())
-        for item in pantry_text.split(",")
-        if item.strip() and normalize(item.strip())
-    })
+def rank_recipes(pantry_text, recipes, method, limit, assume_basics=True):
+    """Return (normalized pantry, [(score, recipe, missing, matched), ...]).
+
+    coverage = matched nonbasic requirements / all nonbasic requirements
+    when basics are enabled; otherwise every requirement counts. TF-IDF and
+    Jaccard use the same normalized ingredient representation and assumptions.
+    """
+    if method not in {"jaccard", "tfidf", "coverage"}:
+        raise ValueError("Method must be jaccard, tfidf, or coverage.")
+    if not isinstance(pantry_text, str):
+        raise ValueError("Ingredients must be comma-separated text.")
+    if limit < 1:
+        raise ValueError("Number of results must be at least 1.")
+    pantry = sorted({normalize(item) for item in pantry_text.split(",") if normalize(item)})
     if not pantry:
         raise ValueError("Enter at least one ingredient, separated by commas.")
-
     pantry_set = set(pantry)
     ranked = []
-
-    if method == "jaccard":
-        for recipe in recipes:
-            ingredients = set(recipe["ingredient_list"])
-            union = pantry_set | ingredients
-            score = len(pantry_set & ingredients) / len(union) if union else 0.0
-            ranked.append((
-                score, recipe,
-                sorted(ingredients - pantry_set),
-                sorted(ingredients & pantry_set),
-            ))
-    else:
-        documents = [" ".join(recipe["ingredient_list"]) for recipe in recipes]
-        vectorizer = TfidfVectorizer(token_pattern=r"(?u)\b\w+\b")
-        matrix = vectorizer.fit_transform(documents + [" ".join(pantry)])
-        scores = cosine_similarity(matrix[-1], matrix[:-1]).ravel()
-        for score, recipe in zip(scores, recipes):
-            ingredients = set(recipe["ingredient_list"])
-            ranked.append((
-                float(score), recipe,
-                sorted(ingredients - pantry_set),
-                sorted(ingredients & pantry_set),
-            ))
-
+    tfidf_scores = None
+    if method == "tfidf":
+        documents = [" ".join(i for i in r["ingredient_list"]
+                               if not (assume_basics and is_basic(i))) for r in recipes]
+        query = " ".join(i for i in pantry if not (assume_basics and is_basic(i)))
+        if any((documents + [query])):
+            vectorizer = TfidfVectorizer(token_pattern=r"(?u)\b\w+\b")
+            matrix = vectorizer.fit_transform(documents + [query])
+            tfidf_scores = cosine_similarity(matrix[-1], matrix[:-1]).ravel()
+        else:
+            tfidf_scores = [0.0] * len(recipes)
+    for index, recipe in enumerate(recipes):
+        ingredients = set(recipe["ingredient_list"])
+        required = {i for i in ingredients if not (assume_basics and is_basic(i))}
+        matched_required = {i for i in required if any(ingredients_match(p, i) for p in pantry)}
+        assumed = ingredients - required
+        matched = matched_required | assumed
+        missing = required - matched_required
+        if method == "coverage":
+            score = len(matched_required) / len(required) if required else 1.0
+        elif method == "jaccard":
+            # Align close matches to recipe terms before calculating the union.
+            effective = {p for p in pantry_set if not (assume_basics and is_basic(p))}
+            aligned = set()
+            for p in effective:
+                matches = {i for i in required if ingredients_match(p, i)}
+                aligned.update(matches or {p})
+            union = aligned | required
+            score = len(matched_required) / len(union) if union else 1.0
+        else:
+            score = float(tfidf_scores[index])
+        ranked.append((score, recipe, sorted(missing), sorted(matched)))
     ranked.sort(key=lambda item: (-item[0], item[1]["title"].casefold()))
     return pantry, ranked[:limit]
 
 
-def render_method(pantry_text, recipes, method, limit):
-    pantry, results = rank_recipes(pantry_text, recipes, method, limit)
+def render_method(pantry_text, recipes, method, limit, assume_basics=True):
+    pantry, results = rank_recipes(pantry_text, recipes, method, limit, assume_basics)
     lines = [
         f"METHOD: {method.upper()}",
         f"Recipe records loaded: {len(recipes)}",
         "Pantry: " + ", ".join(pantry),
+        "Assume pantry basics: " + ("yes" if assume_basics else "no"),
         "-" * 78,
     ]
     for number, (score, recipe, missing, matched) in enumerate(results, 1):
         lines.append(f"{number}. {recipe['title']} | score={score:.3f} | category={recipe['category']}")
-        lines.append("   Matched: " + (", ".join(matched) if matched else "none"))
+        lines.append("   Matched (pantry or assumed basics): " + (", ".join(matched) if matched else "none"))
         lines.append("   Missing from pantry: " + (", ".join(missing) if missing else "none"))
         lines.append("   Source: " + recipe["url"])
     lines.append("")
@@ -175,9 +214,9 @@ def main():
     )
     parser.add_argument(
         "--method",
-        choices=["both", "jaccard", "tfidf"],
-        default="both",
-        help="Which recommendation method to run. Default: both.",
+        choices=["all", "both", "jaccard", "tfidf", "coverage"],
+        default="all",
+        help="Which recommendation method to run. Default: all three; both retains the two original methods.",
     )
     parser.add_argument(
         "--data",
@@ -190,13 +229,19 @@ def main():
         default=str(script_dir / "sample_output.txt"),
         help="File to overwrite with the latest results. Defaults to sample_output.txt beside this script.",
     )
+    parser.add_argument("--no-basics", action="store_true", help="Require salt, pepper, oil, water, and butter to be explicitly supplied.")
     args = parser.parse_args()
 
     if args.top < 1:
         parser.error("--top must be at least 1.")
 
-    recipes = load_recipes(args.data)
-    methods = ["jaccard", "tfidf"] if args.method == "both" else [args.method]
+    try:
+        recipes = load_recipes(args.data)
+        if not any(normalize(i) for i in args.ingredients.split(",")):
+            raise ValueError("Enter at least one ingredient, separated by commas.")
+    except (ValueError, OSError) as exc:
+        parser.error(str(exc))
+    methods = ["jaccard", "tfidf", "coverage"] if args.method == "all" else (["jaccard", "tfidf"] if args.method == "both" else [args.method])
     sections = [
         "FRIDGECHEF — RECOMMENDATION RUN",
         f"Generated: {datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')}",
@@ -205,7 +250,7 @@ def main():
         "",
     ]
     for method in methods:
-        sections.append(render_method(args.ingredients, recipes, method, args.top))
+        sections.append(render_method(args.ingredients, recipes, method, args.top, not args.no_basics))
         sections.append(
             "Interpretation note: scores measure ingredient-text similarity/overlap, "
             "not recipe quality, nutrition, allergies, or food safety."
