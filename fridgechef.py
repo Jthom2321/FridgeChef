@@ -203,6 +203,8 @@ def render_method(pantry_text, recipes, method, limit, assume_basics=True):
 
 
 def main():
+    from database import DEFAULT_DB, create_database, load_db_recipes, preferred_csv
+
     script_dir = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser(
         description="FridgeChef recipe matcher: Jaccard baseline and TF-IDF cosine similarity."
