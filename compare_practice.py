@@ -1,23 +1,34 @@
-"""Run only after Noire supplies the authorized ten practice lists.
-Input JSON: an array of exactly 10 comma-separated ingredient strings.
+"""Before/after comparison on Noire's ten practice lists.
+Input: evaluation/practice_lists.csv (list_id, group, ingredients) or a JSON
+array of exactly 10 comma-separated ingredient strings.
 No hidden lists should be supplied. Both versions use identical input and data.
 """
 import argparse
+import csv
 import json
 from pathlib import Path
 import fridgechef as after
 import fridgechef_before as before
 
 
+def read_practice(path):
+    path = Path(path)
+    if path.suffix.lower() == '.csv':
+        with path.open(newline='', encoding='utf-8-sig') as f:
+            return [(row.get('ingredients') or '') for row in csv.DictReader(f)]
+    return json.loads(path.read_text(encoding='utf-8'))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--practice', required=True, help='Noire\'s 10 practice lists as a JSON array')
-    parser.add_argument('--data', default=str(Path(__file__).with_name('recipes.csv')))
+    parser.add_argument('--practice', default=str(Path(__file__).with_name('evaluation') / 'practice_lists.csv'),
+                        help="Noire's 10 practice lists (CSV or JSON array)")
+    parser.add_argument('--data', default=str(after.default_data_path()))
     parser.add_argument('--output', default='before_after_practice.txt')
     parser.add_argument('--top', type=int, default=5)
     args = parser.parse_args()
     try:
-        lists = json.loads(Path(args.practice).read_text(encoding='utf-8'))
+        lists = read_practice(args.practice)
         if not isinstance(lists, list) or len(lists) != 10 or not all(isinstance(x, str) for x in lists):
             raise ValueError('Supply exactly 10 practice-list strings from Noire; do not include hidden lists.')
         if args.top < 1:

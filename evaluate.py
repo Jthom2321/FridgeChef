@@ -1,15 +1,14 @@
 import argparse
 import csv
-import re
 from pathlib import Path
 
-from fridgechef import load_recipes, normalize, rank_recipes
+from fridgechef import (default_data_path, ingredients_match, is_basic,
+                        load_recipes, normalize, rank_recipes)
 
 
 METHODS = ("jaccard", "tfidf", "coverage")
 MAX_EXTRA_INGREDIENTS = 3
 TOP_N = 5
-BASIC_PATTERN = re.compile(r"\b(salt|pepper|oil|water|butter)\b")
 
 
 def pantry_ingredients(text):
@@ -18,10 +17,6 @@ def pantry_ingredients(text):
         for item in text.split(",")
         if item.strip() and normalize(item.strip())
     }
-
-
-def is_basic(ingredient):
-    return bool(BASIC_PATTERN.search(ingredient))
 
 
 def read_lists(path):
@@ -50,31 +45,17 @@ def read_lists(path):
 
 
 def coverage_rank(pantry_text, recipes, limit):
-    pantry = pantry_ingredients(pantry_text)
-    if not pantry:
-        raise ValueError("Enter at least one ingredient, separated by commas.")
-
-    ranked = []
-    for recipe in recipes:
-        ingredients = set(recipe["ingredient_list"])
-        matched = sorted(ingredients & pantry)
-        score = len(matched) / len(ingredients) if ingredients else 0.0
-        ranked.append((
-            score,
-            recipe,
-            sorted(ingredients - pantry),
-            matched,
-        ))
-    ranked.sort(key=lambda item: (-item[0], item[1]["title"].casefold()))
-    return pantry, ranked[:limit]
+    """Mikayla's coverage method from fridgechef.py (the app's implementation)."""
+    return rank_recipes(pantry_text, recipes, "coverage", limit)
 
 
 def score_recipe(pantry, recipe):
     ingredients = set(recipe["ingredient_list"])
-    matched = ingredients & pantry
+    # Use the same matcher as the app, so "onion" counts for "yellow onion".
+    matched = {i for i in ingredients if any(ingredients_match(p, i) for p in pantry)}
     extras = sorted(
         ingredient
-        for ingredient in ingredients - pantry
+        for ingredient in ingredients - matched
         if not is_basic(ingredient)
     )
     coverage = len(matched) / len(ingredients) if ingredients else 0.0
@@ -107,10 +88,7 @@ def evaluate_lists(lists, recipes):
                 summary["empty_lists"] += 1
                 continue
 
-            if method == "coverage":
-                _, ranked = coverage_rank(item["ingredients"], recipes, TOP_N)
-            else:
-                _, ranked = rank_recipes(item["ingredients"], recipes, method, TOP_N)
+            _, ranked = rank_recipes(item["ingredients"], recipes, method, TOP_N)
 
             list_good = 0
             for position, (score, recipe, _missing, _matched) in enumerate(ranked, 1):
@@ -212,7 +190,8 @@ def main():
         description="Evaluate the top-five recipe recommendations for ingredient lists."
     )
     parser.add_argument("--lists", required=True, help="CSV with list_id, group, ingredients.")
-    parser.add_argument("--data", default=str(Path(__file__).resolve().parent / "recipes.csv"))
+    parser.add_argument("--data", default=str(default_data_path()),
+                        help="Recipe CSV; defaults to recipes_v2.csv (falls back to recipes.csv).")
     parser.add_argument("--output", required=True, help="Path for per-recommendation review CSV.")
     parser.add_argument("--summary", help="Optional path for the comparison table as CSV.")
     args = parser.parse_args()
@@ -233,8 +212,8 @@ def main():
         f"Good-pick rule: no more than {MAX_EXTRA_INGREDIENTS} recipe ingredients "
         "missing from the list, excluding salt, pepper, oil, water, and butter."
     )
-    print("Coverage is matched list ingredients / total recipe ingredients; implicit basics do not count as matches.")
-    print("The coverage ranking is an evaluation-only comparator, not an app implementation.")
+    print("Coverage@5 is matched list ingredients / total recipe ingredients; implicit basics do not count as matches.")
+    print("The coverage row ranks with the app's coverage method from fridgechef.py.")
     print("Seth's independent judgments are blank in the worksheet and still need to be completed.")
 
 

@@ -164,6 +164,17 @@ def create_database(csv_path: str | Path | None = None,
             os.remove(temporary_name)
 
 
+def database_is_stale(db_path: str | Path = DEFAULT_DB,
+                      csv_path: str | Path | None = None) -> bool:
+    """True when the DB is missing or older than its CSV or the matching code."""
+    db = Path(db_path)
+    if not db.is_file():
+        return True
+    sources = [Path(csv_path) if csv_path else preferred_csv(), ROOT / "fridgechef.py"]
+    db_time = db.stat().st_mtime
+    return any(s.is_file() and s.stat().st_mtime > db_time for s in sources)
+
+
 def load_db_recipes(db_path: str | Path = DEFAULT_DB) -> list[dict]:
     """Return recipes in the legacy ranker's expected format, plus metadata."""
     if not Path(db_path).exists():
