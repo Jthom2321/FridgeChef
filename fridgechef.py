@@ -202,12 +202,17 @@ def render_method(pantry_text, recipes, method, limit, assume_basics=True):
     return "\n".join(lines)
 
 
-def main():
-    from database import DEFAULT_DB, create_database, load_db_recipes, preferred_csv
+def default_data_path():
+    """Use the expanded team dataset when present, else the Checkpoint 1 pilot."""
+    here = Path(__file__).resolve().parent
+    v2 = here / "recipes_v2.csv"
+    return v2 if v2.is_file() else here / "recipes.csv"
 
+
+def main():
     script_dir = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser(
-        description="FridgeChef recipe matcher: Jaccard baseline and TF-IDF cosine similarity."
+        description="FridgeChef recipe matcher: Jaccard baseline, TF-IDF cosine similarity, and coverage."
     )
     parser.add_argument(
         "--ingredients",
@@ -222,8 +227,8 @@ def main():
     )
     parser.add_argument(
         "--data",
-        default=str(script_dir / "recipes.csv"),
-        help="Path to the recipe CSV. Defaults to recipes.csv beside this script.",
+        default=str(default_data_path()),
+        help="Path to the recipe CSV. Defaults to recipes_v2.csv (falls back to recipes.csv).",
     )
     parser.add_argument("--top", type=int, default=5, help="Number of recommendations per method.")
     parser.add_argument(
