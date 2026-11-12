@@ -1,4 +1,4 @@
-# FridgeChef — Updated Checkpoint 1 Artifact
+# FridgeChef — Checkpoint 1 Artifact
 
 ## What it does
 - Loads recipe records from `recipes.csv`.
@@ -42,20 +42,27 @@ Choose the number of recommendations:
 - Ingredient normalization is a starter implementation and may miss synonyms or interpret ingredient phrases imperfectly.
 - This prototype does not evaluate allergies, nutrition, or food safety.
 - This dataset is not evenly distributed among categories of recipies.
-## Checkpoint 2 backend addition (Seth)
-The CLI now runs on a SQLite database and delegates all recommendations to the
-`recommend()` function in `recommend.py`. The database schema, importer,
-website/test integration instructions, limitations and final dependencies are
-in **[BACKEND_HANDOFF.md](BACKEND_HANDOFF.md)**.
 
-```bash
-python build_db.py             # imports recipes_v2.csv if present; else recipes.csv
-python fridgechef.py --ingredients "eggs, spinach, garlic, pasta" --method coverage --top 3
-python fridgechef.py --ingredients "eggs, spinach, garlic, pasta" --method jaccard --top 3
-python -m unittest discover -s tests -v
-```
+## Noire's Checkpoint 2 evaluation
+- `evaluation/practice_lists.csv` contains 10 practice inputs. The 10 hidden inputs are kept in a local-only `evaluation/hidden_lists.csv`; do not share that file with the ranking implementer.
+- The lists cover ordinary pantry combinations, Korean/Japanese pantry ingredients absent from the current recipes, and edge cases including a single ingredient, a 30-plus-item list, misspellings, empty input, and random text.
+- A result is good when no more than 3 non-basic recipe ingredients are missing. Salt, pepper, oil, water, and butter do not count as extra ingredients.
+- `evaluate.py` evaluates the top 5 from Jaccard, TF-IDF, and an evaluation-only ingredient-coverage comparator (`matched ingredients / recipe ingredients`). It writes a per-result CSV with rubric decisions and a blank column for Seth's independent decisions.
 
-Available recommendation methods: `jaccard`, `tfidf`, and `coverage`.
-Use `--basics` to count common pantry staples; the default is off for comparison
-with the original Checkpoint 1 behavior. See `VIDEO_SCRIPT_SETH.md` for the
-backend recording outline.
+Run the evaluation and save its review worksheet:
+
+    python evaluate.py --lists evaluation/hidden_lists.csv --output evaluation/hidden_results.csv --summary evaluation/hidden_summary.csv
+
+The summary reports good picks out of the 50 possible top-five slots, the fraction of all slots that are good, and the number of lists with at least 3 good picks. An empty list produces zero recommendations and counts as 0 of its five slots. Ingredient coverage is the fraction matched by the explicitly entered list; the assumed basics are excluded from the missing-ingredient good-pick rule, not added to the ranking inputs. The comparison table is also saved to the requested summary CSV. The coverage comparator is not wired into `fridgechef.py`; it does not stand in for Mikayla's implementation. Seth's independent review and sharing the hidden file with him must be completed separately.
+
+### Initial hidden-set results (2026-11-12)
+
+These are rule-based results from the 10 hidden lists, with 5 recommendation slots per list:
+
+| Method | Good picks / 50 | Precision@5 | Lists with 3+ good / 10 | Mean ingredient coverage@5 |
+|---|---:|---:|---:|---:|
+| Jaccard | 3/50 | 0.060 | 0/10 | 0.139 |
+| TF-IDF | 2/50 | 0.040 | 0/10 | 0.093 |
+| Coverage (evaluation-only) | 5/50 | 0.100 | 1/10 | 0.150 |
+
+The coverage row is an evaluator-only comparator, not an implementation in `fridgechef.py`. Seth's independent judgments have not been recorded, so these results are preliminary and not peer-reviewed.
