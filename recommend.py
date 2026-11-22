@@ -50,7 +50,8 @@ def _parse_ingredients(ingredients: str | Sequence[str]) -> list[str]:
 
 def recommend(ingredients: str | Sequence[str], method: str = "jaccard",
               top_n: int = 5, *, have_basics: bool = False,
-              db_path: str | Path = DEFAULT_DB) -> list[dict]:
+              db_path: str | Path = DEFAULT_DB,
+              data_path: str | Path | None = None) -> list[dict]:
     """Return ranked recipe dictionaries with scores and ingredient breakdowns.
 
     Args:
@@ -61,6 +62,7 @@ def recommend(ingredients: str | Sequence[str], method: str = "jaccard",
             so they are neither required nor listed as missing.
         db_path: SQLite file; (re)built from recipes_v2.csv / recipes.csv when it
             is missing or older than the CSV or fridgechef.py.
+        data_path: optional recipe CSV to use instead of the default dataset.
 
     Returns:
         [] when none of the recipes matches the user's ingredients.
@@ -74,8 +76,8 @@ def recommend(ingredients: str | Sequence[str], method: str = "jaccard",
         raise ValueError("Top N must be a whole number between 1 and 25.")
     pantry = _parse_ingredients(ingredients)
     db = Path(db_path)
-    if database_is_stale(db):
-        create_database(db_path=db)
+    if database_is_stale(db, csv_path=data_path):
+        create_database(csv_path=data_path, db_path=db)
     recipes = load_db_recipes(db)
     if not recipes:
         return []

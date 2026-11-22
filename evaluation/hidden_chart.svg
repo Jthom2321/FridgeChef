@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="500" viewBox="0 0 1040 500" role="img" aria-labelledby="title description">
+  <title id="title">Good recommendations by list type</title>
+  <desc id="description">Current app methods evaluated with the corrected good-result rule. Coverage has 20 percent good picks for weird inputs; all methods have zero for unsupported cuisines.</desc>
+  <style>
+    text { font-family: Arial, sans-serif; fill: #202124; }
+    .title { font-size: 23px; font-weight: 700; }
+    .subtitle { font-size: 14px; fill: #555; }
+    .axis, .label { font-size: 13px; }
+    .grid { stroke: #d7dce2; stroke-width: 1; }
+    .axisline { stroke: #6b7280; stroke-width: 1.4; }
+    .jaccard { fill: #3973ac; }
+    .tfidf { fill: #ed9b40; }
+    .coverage { fill: #4b9b76; }
+    .value { font-size: 12px; font-weight: 700; }
+  </style>
+  <text class="title" x="48" y="38">Good picks by list type</text>
+  <text class="subtitle" x="48" y="62">Current app methods - corrected rule - bar scale 0-25% of top-five slots</text>
+
+  <line class="grid" x1="250" y1="110" x2="930" y2="110"/>
+  <line class="grid" x1="250" y1="158" x2="930" y2="158"/>
+  <line class="grid" x1="250" y1="206" x2="930" y2="206"/>
+  <line class="grid" x1="250" y1="254" x2="930" y2="254"/>
+  <line class="grid" x1="250" y1="302" x2="930" y2="302"/>
+  <line class="axisline" x1="250" y1="110" x2="250" y2="350"/>
+  <line class="axisline" x1="250" y1="350" x2="930" y2="350"/>
+  <text class="axis" x="215" y="355">0%</text>
+  <text class="axis" x="207" y="307">5%</text>
+  <text class="axis" x="199" y="259">10%</text>
+  <text class="axis" x="199" y="211">15%</text>
+  <text class="axis" x="199" y="163">20%</text>
+  <text class="axis" x="199" y="115">25%</text>
+
+  <rect class="jaccard" x="310" y="285.7" width="46" height="64.3"/>
+  <text class="value" x="315" y="278">6.7%</text>
+  <rect class="tfidf" x="365" y="350" width="46" height="0"/>
+  <text class="value" x="378" y="342">0%</text>
+  <rect class="coverage" x="420" y="285.7" width="46" height="64.3"/>
+  <text class="value" x="425" y="278">6.7%</text>
+
+  <rect class="jaccard" x="520" y="350" width="46" height="0"/>
+  <text class="value" x="533" y="342">0%</text>
+  <rect class="tfidf" x="575" y="350" width="46" height="0"/>
+  <text class="value" x="588" y="342">0%</text>
+  <rect class="coverage" x="630" y="350" width="46" height="0"/>
+  <text class="value" x="643" y="342">0%</text>
+
+  <rect class="jaccard" x="730" y="302" width="46" height="48"/>
+  <text class="value" x="735" y="294">5%</text>
+  <rect class="tfidf" x="785" y="350" width="46" height="0"/>
+  <text class="value" x="798" y="342">0%</text>
+  <rect class="coverage" x="840" y="158" width="46" height="192"/>
+  <text class="value" x="845" y="150">20%</text>
+
+  <text class="label" x="330" y="380">Normal</text>
+  <text class="subtitle" x="320" y="399">15 slots</text>
+  <text class="label" x="515" y="380">Unsupported cuisine</text>
+  <text class="subtitle" x="545" y="399">15 slots</text>
+  <text class="label" x="735" y="380">Weird inputs</text>
+  <text class="subtitle" x="735" y="399">20 slots</text>
+
+  <rect class="jaccard" x="344" y="425" width="15" height="15"/>
+  <text class="axis" x="365" y="437">Jaccard</text>
+  <rect class="tfidf" x="450" y="425" width="15" height="15"/>
+  <text class="axis" x="471" y="437">TF-IDF</text>
+  <rect class="coverage" x="550" y="425" width="15" height="15"/>
+  <text class="axis" x="571" y="437">Coverage</text>
+  <text class="subtitle" x="48" y="465">Random and weighted coverage pending; not currently implemented by recommend().</text>
+</svg>

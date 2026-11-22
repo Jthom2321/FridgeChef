@@ -54,26 +54,14 @@ Choose the number of recommendations:
 - This prototype does not evaluate allergies, nutrition, or food safety.
 - This dataset is not evenly distributed among categories of recipies.
 
-## Noire's Checkpoint 2 evaluation
-- `evaluation/practice_lists.csv` contains 10 practice inputs. The 10 hidden inputs are kept in a local-only `evaluation/hidden_lists.csv`; do not share that file with the ranking implementer.
-- The lists cover ordinary pantry combinations, Korean/Japanese pantry ingredients absent from the current recipes, and edge cases including a single ingredient, a 30-plus-item list, misspellings, empty input, and random text.
-- A result is good when no more than 3 non-basic recipe ingredients are missing. Salt, pepper, oil, water, and butter do not count as extra ingredients.
-- `evaluate.py` evaluates the top 5 from Jaccard, TF-IDF, and the app's coverage method in `fridgechef.py`. Good-pick judgments use the app's ingredient matcher (so "onion" counts for "yellow onion") and its basics list (salt, pepper, oil, water, butter and their plain variants; not bell pepper, peanut butter, or sesame oil). It writes a per-result CSV with rubric decisions and a blank column for Seth's independent decisions.
+## Hidden-list evaluation
+- The 10 hidden inputs are kept in `evaluation/hidden_lists.csv`. The lists cover ordinary pantry combinations, unsupported cuisines, and edge cases.
+- **Good-result rule:** A recipe is good only when it matches at least two of the user's ingredients and has no more than three missing non-basic ingredients.
+- `evaluate.py` calls `recommend()` from `recommend.py`, so it evaluates the same rankings the app returns. It currently evaluates Jaccard, TF-IDF, and coverage; random and weighted coverage are not yet exposed by the shared recommender.
+- The per-recommendation worksheet records the matching pantry count, missing non-basic ingredients, and rule-based good/not-good mark. It preserves Seth's existing marks if results still match, but does not create independent judgments.
 
-Run the evaluation and save its review worksheet:
+Run the evaluation:
 
     python evaluate.py --lists evaluation/hidden_lists.csv --output evaluation/hidden_results.csv --summary evaluation/hidden_summary.csv
 
-The summary reports good picks out of the 50 possible top-five slots, the fraction of all slots that are good, and the number of lists with at least 3 good picks. An empty list produces zero recommendations and counts as 0 of its five slots. Ingredient coverage is the fraction matched by the explicitly entered list; the assumed basics are excluded from the missing-ingredient good-pick rule, not added to the ranking inputs. The comparison table is also saved to the requested summary CSV. Seth's independent review and sharing the hidden file with him must be completed separately.
-
-### Initial hidden-set results (2026-11-12)
-
-These are rule-based results from the 10 hidden lists, with 5 recommendation slots per list:
-
-| Method | Good picks / 50 | Precision@5 | Lists with 3+ good / 10 | Mean ingredient coverage@5 |
-|---|---:|---:|---:|---:|
-| Jaccard | 3/50 | 0.060 | 0/10 | 0.139 |
-| TF-IDF | 2/50 | 0.040 | 0/10 | 0.093 |
-| Coverage (evaluation-only) | 5/50 | 0.100 | 1/10 | 0.150 |
-
-**Out of date:** these numbers came from the 50-recipe `recipes.csv`, an evaluation-only coverage comparator, and an older good-pick rule. Rerun the command above on the hidden lists before quoting results. Seth's independent judgments have not been recorded, so these results are preliminary and not peer-reviewed.
+The summary CSV breaks good picks out by list group as well as overall. Current results, the slide chart, and an approximately 1:20 video script are in `evaluation/hidden_report.md`, `evaluation/hidden_chart.svg`, and `evaluation/hidden_video_script.md`. The available-method results are provisional until ranking is final; random and weighted coverage and Seth's independent review are still pending.
