@@ -1,58 +1,32 @@
 FRIDGECHEF — RECOMMENDATION RUN
-Generated: 2026-11-12 09:23:09 EST
-Data file: /Users/noirem/REPOS/FridgeChef/recipes.csv
-Unique recipe records loaded: 50
+Generated: 2026-11-12 12:16:05 Eastern Standard Time
+Data file: C:\Users\pksma\OneDrive\Senior Year Files\COMP 365\Team Project\FridgeChef\recipes_v2.csv
+Unique recipe records loaded: 120
 
-METHOD: JACCARD
-Recipe records loaded: 50
-Pantry: egg, garlic, pasta, spinach
+METHOD: COVERAGE
+Recipe records loaded: 120
+Pantry: gochujang, kimchi, tofu
+Assume pantry basics: yes
 ------------------------------------------------------------------------------
-1. Spaghetti Frittata | score=0.300 | category=dinner
-   Matched: egg, garlic, spinach
-   Missing from pantry: marinara sauce, olive oil, onion, parmesan, spaghetti, sun dried tomato
-   Source: https://www.foodnetwork.com/recipes/ellie-krieger/spaghetti-frittata-recipe-1953062
-2. The Best Chicken Parmesan | score=0.111 | category=dinner
-   Matched: egg, garlic
-   Missing from pantry: all purpose flour, basil, boneless skinless chicken breast, crushed red pepper flake, diced tomato, dried oregano, freshly ground black pepper, grated parmesan, kosher salt, milk, olive oil, plain breadcrumb, spaghetti, whole milk mozzarella
-   Source: https://www.foodnetwork.com/recipes/food-network-kitchen/the-best-chicken-parmesan-7194683
-3. Italian Wedding Soup | score=0.091 | category=dinner
-   Matched: egg, garlic
-   Missing from pantry: baby spinach, carrot, celery, chicken sausage, dry white wine, fresh dill, fresh parsley leave, fresh white bread crumb, freshly ground black pepper, ground chicken, homemade chicken stock, kosher salt, milk, olive oil, parmesan, pecorino romano, small pasta, yellow onion
-   Source: https://www.foodnetwork.com/recipes/ina-garten/italian-wedding-soup-recipe-1945517
-4. Mini Frittatas | score=0.091 | category=breakfast
-   Matched: egg
-   Missing from pantry: fresh italian parsley leave, freshly grated parmesan, freshly ground black pepper, ham, nonstick vegetable oil cooking spray, salt, whole milk
-   Source: https://www.foodnetwork.com/recipes/giada-de-laurentiis/mini-frittatas-recipe-1944892
-5. White Bean Pomegranate Crostini | score=0.083 | category=appetizer
-   Matched: garlic
-   Missing from pantry: cannellini bean, chopped parsley, honey, olive oil, pepper, pomegranate seed, salt, sherry vinegar
-   Source: https://www.foodnetwork.com/recipes/food-network-kitchen/white-bean-pomegranate-crostini-3562314
-
-Interpretation note: scores measure ingredient-text similarity/overlap, not recipe quality, nutrition, allergies, or food safety.
-
-METHOD: TFIDF
-Recipe records loaded: 50
-Pantry: egg, garlic, pasta, spinach
-------------------------------------------------------------------------------
-1. Spaghetti Frittata | score=0.312 | category=dinner
-   Matched: egg, garlic, spinach
-   Missing from pantry: marinara sauce, olive oil, onion, parmesan, spaghetti, sun dried tomato
-   Source: https://www.foodnetwork.com/recipes/ellie-krieger/spaghetti-frittata-recipe-1953062
-2. Italian Wedding Soup | score=0.270 | category=dinner
-   Matched: egg, garlic
-   Missing from pantry: baby spinach, carrot, celery, chicken sausage, dry white wine, fresh dill, fresh parsley leave, fresh white bread crumb, freshly ground black pepper, ground chicken, homemade chicken stock, kosher salt, milk, olive oil, parmesan, pecorino romano, small pasta, yellow onion
-   Source: https://www.foodnetwork.com/recipes/ina-garten/italian-wedding-soup-recipe-1945517
-3. Whole-Wheat Spaghetti with Lemon, Basil, and Salmon | score=0.261 | category=dinner
-   Matched: none
-   Missing from pantry: caper, chopped fresh basil leave, extra virgin olive oil, fresh baby spinach leave, freshly ground black pepper, garlic clove minced, lemon juice, lemon zested, olive oil, salmon piece, salt, whole wheat spaghetti pasta
-   Source: https://www.foodnetwork.com/recipes/giada-de-laurentiis/whole-wheat-spaghetti-with-lemon-basil-and-salmon-recipe-1937647
-4. Skillet Pasta and Beef Dinner | score=0.251 | category=dinner
-   Matched: none
-   Missing from pantry: jar rag old world style pasta sauce, lean ground beef, shredded part skim mozzarella cheese, uncooked whole wheat rotini pasta, water
-   Source: https://www.foodnetwork.com/recipes/skillet-pasta-and-beef-dinner-recipe-1970893
-5. Roasted Spring Veggies and Dip | score=0.110 | category=side
-   Matched: spinach
-   Missing from pantry: chopped fresh chive, chopped fresh parsley, fresh basil leave, freshly ground black pepper, honey, kosher salt, lemon zest, mayonnaise, minced fresh thyme, multicolored carrot, olive oil, parsnip, red onion, shredded parmesan, sour cream
-   Source: https://www.foodnetwork.com/recipes/ree-drummond/roasted-spring-veggies-and-dip-8364104
+1. Saucy Tofu and Mushrooms Over Rice | score=0.067 | category=dinner
+   Matched (pantry or assumed basics): olive oil, salt, tofu
+   Missing from pantry: chili garlic sauce, garlic, gochugaru, light coconut milk, mixed mushroom, parsley, red wine vinegar, shallots, sugar, tomato paste, vegetable broth, vodka, white miso, white rice
+   Source: https://www.foodnetwork.com/recipes/food-network-kitchen/saucy-tofu-and-mushrooms-over-rice-21177421
+2. Aloo Gobi | score=0.000 | category=side
+   Matched (pantry or assumed basics): canola oil, salt, water
+   Missing from pantry: cauliflower, coriander, coriander leaf, cumin seed, garlic, ginger, peanut oil, russet potato, serrano pepper, turmeric
+   Source: https://www.foodnetwork.com/recipes/aarti-sequeira/aloo-gobi-1952543
+3. Apple Dumplings | score=0.000 | category=dessert
+   Matched (pantry or assumed basics): salted butter
+   Missing from pantry: cinnamon, citrus flavored soda, granny smith apple, refrigerated crescent roll dough, sugar, vanilla extract
+   Source: https://www.foodnetwork.com/recipes/ree-drummond/apple-dumplings-3755854
+4. Apple Meringue Cupcakes | score=0.000 | category=dessert
+   Matched (pantry or assumed basics): unsalted butter
+   Missing from pantry: all purpose flour, baking soda, cream of tartar, egg, egg whites, fine salt, lemon juice, lemon zest, nutmeg, sour cream, sugar, sweet apple, vanilla extract
+   Source: https://www.foodnetwork.com/recipes/food-network-kitchen/apple-meringue-cupcakes-5487720
+5. Baby Lima Beans (Butterbeans) | score=0.000 | category=side
+   Matched (pantry or assumed basics): butter, pepper, salt
+   Missing from pantry: lima bean
+   Source: https://www.foodnetwork.com/recipes/trisha-yearwood/baby-lima-beans-butterbeans-recipe-2116626
 
 Interpretation note: scores measure ingredient-text similarity/overlap, not recipe quality, nutrition, allergies, or food safety.

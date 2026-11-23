@@ -14,11 +14,10 @@ import re
 from pathlib import Path
 from typing import Sequence
 
-from database import DEFAULT_DB, create_database, load_db_recipes
-from fridgechef import normalize, rank_recipes
+from database import DEFAULT_DB, create_database, database_is_stale, load_db_recipes
+from fridgechef import is_basic, normalize, rank_recipes
 
 METHODS = ("jaccard", "tfidf", "coverage")
-BASICS = ("salt", "pepper", "oil", "olive oil", "water", "butter")
 MAX_INGREDIENTS = 40
 MAX_INPUT_CHARS = 2000
 
@@ -51,15 +50,19 @@ def _parse_ingredients(ingredients: str | Sequence[str]) -> list[str]:
 
 def recommend(ingredients: str | Sequence[str], method: str = "jaccard",
               top_n: int = 5, *, have_basics: bool = False,
-              db_path: str | Path = DEFAULT_DB) -> list[dict]:
+              db_path: str | Path = DEFAULT_DB,
+              data_path: str | Path | None = None) -> list[dict]:
     """Return ranked recipe dictionaries with scores and ingredient breakdowns.
 
     Args:
         ingredients: comma-separated pantry text or a list of ingredient names.
         method: 'jaccard', 'tfidf', or 'coverage'.
         top_n: number of results, from 1 through 25.
-        have_basics: add common staples for matching; disabled for baseline parity.
-        db_path: SQLite file; created from recipes_v2.csv / recipes.csv if missing.
+        have_basics: treat salt, pepper, oil, water, and butter as already owned,
+            so they are neither required nor listed as missing.
+        db_path: SQLite file; (re)built from recipes_v2.csv / recipes.csv when it
+            is missing or older than the CSV or fridgechef.py.
+        data_path: optional recipe CSV to use instead of the default dataset.
 
     Returns:
         [] when none of the recipes matches the user's ingredients.
@@ -73,8 +76,8 @@ def recommend(ingredients: str | Sequence[str], method: str = "jaccard",
         raise ValueError("Top N must be a whole number between 1 and 25.")
     pantry = _parse_ingredients(ingredients)
     db = Path(db_path)
-    if not db.is_file():
-        create_database(db_path=db)
+    if database_is_stale(db, csv_path=data_path):
+        create_database(csv_path=data_path, db_path=db)
     recipes = load_db_recipes(db)
     if not recipes:
         return []
@@ -90,14 +93,15 @@ def recommend(ingredients: str | Sequence[str], method: str = "jaccard",
     if not meaningful_tokens.intersection(vocabulary):
         return []
 
-    available = list(pantry)
-    if have_basics:
-        available.extend(x for x in BASICS if normalize(x) not in available)
-    _, ranked = rank_recipes(", ".join(available), recipes, method, top_n)
+    _, ranked = rank_recipes(", ".join(pantry), recipes, method, top_n,
+                             assume_basics=have_basics)
     result = []
     for score, recipe, missing, matched in ranked:
         if score <= 0:
             continue
+        # Coverage counts only ingredients the user actually entered, not
+        # basics that were assumed.
+        from_pantry = [i for i in matched if not (have_basics and is_basic(i))]
         result.append({
             "recipe_id": recipe["id"],
             "title": recipe["title"],
@@ -107,7 +111,7 @@ def recommend(ingredients: str | Sequence[str], method: str = "jaccard",
             "main_protein": recipe["main_protein"],
             "method": method,
             "score": float(score),
-            "ingredient_coverage": len(matched) / len(recipe["ingredient_list"]),
+            "ingredient_coverage": len(from_pantry) / len(recipe["ingredient_list"]),
             "matched_ingredients": matched,
             "missing_ingredients": missing,
             "total_ingredients": len(recipe["ingredient_list"]),
