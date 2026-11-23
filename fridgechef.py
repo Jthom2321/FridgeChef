@@ -1,5 +1,6 @@
 import argparse
 import csv
+import random
 import re
 from datetime import datetime
 from pathlib import Path
@@ -35,6 +36,47 @@ BASICS = {"salt", "pepper", "black pepper", "oil", "olive oil", "vegetable oil",
 # Only these qualifiers may be omitted in a close match. Never match by
 # substring: e.g. chicken must not satisfy chicken stock, or milk coconut milk.
 CLOSE_QUALIFIERS = {"yellow", "white", "red", "italian", "flat", "leaf"}
+
+# --- Weighted coverage -----------------------------------------------------
+# Missing a main ingredient should cost more than missing a garnish. Weights are
+# assigned from the ingredient's head word (its last word): "chicken stock" is
+# a stock, not a chicken. Everything not listed gets the default weight of 1.
+MAIN_WEIGHT, STAPLE_WEIGHT, DEFAULT_WEIGHT, MINOR_WEIGHT = 3.0, 2.0, 1.0, 0.5
+MAIN_WORDS = set("""chicken beef pork turkey lamb veal duck sausage bacon ham steak
+    salmon shrimp fish tuna cod tilapia halibut crab lobster scallop clam mussel
+    tofu breast thigh brisket ribs""".split())
+STAPLE_WORDS = set("""pasta spaghetti penne rotini noodle rice potato flour bread breadcrumb
+    tortilla egg cheese mozzarella cheddar parmesan milk cream bean chickpea lentil
+    tomato""".split())
+MINOR_WORDS = set("""parsley basil thyme oregano dill chive mint rosemary sage coriander
+    cumin paprika cinnamon nutmeg vanilla zest flake cayenne bay clove sprinkle
+    garnish""".split())
+NON_MAIN_HEADS = set("stock broth sauce juice zest powder extract vinegar oil paste seasoning dressing".split())
+
+
+def ingredient_weight(ingredient):
+    words = normalize(ingredient).split()
+    if not words:
+        return DEFAULT_WEIGHT
+    head = words[-1]
+    if head in MINOR_WORDS:
+        return MINOR_WEIGHT
+    if head in MAIN_WORDS:
+        return MAIN_WEIGHT
+    if head in STAPLE_WORDS:
+        return STAPLE_WEIGHT
+    if head not in NON_MAIN_HEADS and any(w in MAIN_WORDS for w in words):
+        return MAIN_WEIGHT  # e.g. "salmon piece"
+    return DEFAULT_WEIGHT
+
+
+# --- Short-recipe guard ----------------------------------------------------
+# A recipe with only 1-2 required ingredients (e.g. Baby Lima Beans) can reach
+# 100% overlap trivially. Scores are scaled by min(1, required / MIN_RECIPE_SIZE)
+# so such recipes cannot outrank fuller matches on size alone.
+MIN_RECIPE_SIZE = 4
+
+METHODS = ["jaccard", "tfidf", "coverage", "weighted", "random"]
 
 
 def normalize(value):
@@ -130,15 +172,18 @@ def load_recipes(path):
     return result
 
 
-def rank_recipes(pantry_text, recipes, method, limit, assume_basics=True):
+def rank_recipes(pantry_text, recipes, method, limit, assume_basics=True, seed=0):
     """Return (normalized pantry, [(score, recipe, missing, matched), ...]).
 
-    coverage = matched nonbasic requirements / all nonbasic requirements
-    when basics are enabled; otherwise every requirement counts. TF-IDF and
-    Jaccard use the same normalized ingredient representation and assumptions.
+    coverage  = matched nonbasic requirements / all nonbasic requirements
+    weighted  = same, but each ingredient counts by ingredient_weight()
+    random    = seeded random picks (chance baseline); score is None
+    Overlap methods drop recipes that use none of the pantry (no score-0
+    results) and scale scores down for recipes with fewer than
+    MIN_RECIPE_SIZE required ingredients.
     """
-    if method not in {"jaccard", "tfidf", "coverage"}:
-        raise ValueError("Method must be jaccard, tfidf, or coverage.")
+    if method not in set(METHODS):
+        raise ValueError("Method must be one of: " + ", ".join(METHODS) + ".")
     if not isinstance(pantry_text, str):
         raise ValueError("Ingredients must be comma-separated text.")
     if limit < 1:
@@ -166,8 +211,18 @@ def rank_recipes(pantry_text, recipes, method, limit, assume_basics=True):
         assumed = ingredients - required
         matched = matched_required | assumed
         missing = required - matched_required
+        if method == "random":
+            ranked.append((None, recipe, sorted(missing), sorted(matched)))
+            continue
+        if not matched_required:
+            continue  # uses nothing the person has: never a recommendation
+        size_factor = min(1.0, len(required) / MIN_RECIPE_SIZE)
         if method == "coverage":
-            score = len(matched_required) / len(required) if required else 1.0
+            score = len(matched_required) / len(required) * size_factor
+        elif method == "weighted":
+            total = sum(ingredient_weight(i) for i in required)
+            have = sum(ingredient_weight(i) for i in matched_required)
+            score = have / total * size_factor
         elif method == "jaccard":
             # Align close matches to recipe terms before calculating the union.
             effective = {p for p in pantry_set if not (assume_basics and is_basic(p))}
@@ -176,16 +231,21 @@ def rank_recipes(pantry_text, recipes, method, limit, assume_basics=True):
                 matches = {i for i in required if ingredients_match(p, i)}
                 aligned.update(matches or {p})
             union = aligned | required
-            score = len(matched_required) / len(union) if union else 1.0
+            score = len(matched_required) / len(union) * size_factor if union else 0.0
         else:
-            score = float(tfidf_scores[index])
+            score = float(tfidf_scores[index]) * size_factor
+        if score <= 0:
+            continue
         ranked.append((score, recipe, sorted(missing), sorted(matched)))
+    if method == "random":
+        random.Random(seed).shuffle(ranked)
+        return pantry, ranked[:limit]
     ranked.sort(key=lambda item: (-item[0], item[1]["title"].casefold()))
     return pantry, ranked[:limit]
 
 
-def render_method(pantry_text, recipes, method, limit, assume_basics=True):
-    pantry, results = rank_recipes(pantry_text, recipes, method, limit, assume_basics)
+def render_method(pantry_text, recipes, method, limit, assume_basics=True, seed=0):
+    pantry, results = rank_recipes(pantry_text, recipes, method, limit, assume_basics, seed)
     lines = [
         f"METHOD: {method.upper()}",
         f"Recipe records loaded: {len(recipes)}",
@@ -193,8 +253,11 @@ def render_method(pantry_text, recipes, method, limit, assume_basics=True):
         "Assume pantry basics: " + ("yes" if assume_basics else "no"),
         "-" * 78,
     ]
+    if not results:
+        lines.append("No recipes use any of these ingredients.")
     for number, (score, recipe, missing, matched) in enumerate(results, 1):
-        lines.append(f"{number}. {recipe['title']} | score={score:.3f} | category={recipe['category']}")
+        shown = "random pick" if score is None else f"{score:.3f}"
+        lines.append(f"{number}. {recipe['title']} | score={shown} | category={recipe['category']}")
         lines.append("   Matched (pantry or assumed basics): " + (", ".join(matched) if matched else "none"))
         lines.append("   Missing from pantry: " + (", ".join(missing) if missing else "none"))
         lines.append("   Source: " + recipe["url"])
@@ -214,9 +277,9 @@ def main():
     )
     parser.add_argument(
         "--method",
-        choices=["all", "both", "jaccard", "tfidf", "coverage"],
+        choices=["all", "both"] + METHODS,
         default="all",
-        help="Which recommendation method to run. Default: all three; both retains the two original methods.",
+        help="Which method to run. Default: all five (Jaccard, TF-IDF, coverage, weighted coverage, random); both = Jaccard + TF-IDF.",
     )
     parser.add_argument(
         "--data",
@@ -229,6 +292,7 @@ def main():
         default=str(script_dir / "sample_output.txt"),
         help="File to overwrite with the latest results. Defaults to sample_output.txt beside this script.",
     )
+    parser.add_argument("--seed", type=int, default=0, help="Seed for the random-picks baseline.")
     parser.add_argument("--no-basics", action="store_true", help="Require salt, pepper, oil, water, and butter to be explicitly supplied.")
     args = parser.parse_args()
 
@@ -241,7 +305,7 @@ def main():
             raise ValueError("Enter at least one ingredient, separated by commas.")
     except (ValueError, OSError) as exc:
         parser.error(str(exc))
-    methods = ["jaccard", "tfidf", "coverage"] if args.method == "all" else (["jaccard", "tfidf"] if args.method == "both" else [args.method])
+    methods = list(METHODS) if args.method == "all" else (["jaccard", "tfidf"] if args.method == "both" else [args.method])
     sections = [
         "FRIDGECHEF — RECOMMENDATION RUN",
         f"Generated: {datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')}",
@@ -250,7 +314,7 @@ def main():
         "",
     ]
     for method in methods:
-        sections.append(render_method(args.ingredients, recipes, method, args.top, not args.no_basics))
+        sections.append(render_method(args.ingredients, recipes, method, args.top, not args.no_basics, args.seed))
         sections.append(
             "Interpretation note: scores measure ingredient-text similarity/overlap, "
             "not recipe quality, nutrition, allergies, or food safety."
