@@ -22,6 +22,8 @@ from fridgechef import normalize, split_ingredients
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_DB = ROOT / "recipes.db"
+ALLERGEN_CSV = ROOT / "allergen_map.csv"
+SUBSTITUTIONS_CSV = ROOT / "substitutions.csv"
 
 
 def preferred_csv() -> Path:
@@ -85,8 +87,40 @@ def _read_csv(csv_path: Path):
                 "category": category,
                 "cuisine": field("cuisine"),
                 "main_protein": field("main_protein") or field("protein"),
+                "allergens": field("allergens"),
                 "ingredients": ingredients,
             }
+
+
+def _read_allergen_map(path: Path):
+    """Yield (normalized ingredient, allergen, basis) from Enioluwa's allergen map."""
+    if not path.is_file():
+        return
+    with path.open(newline="", encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            ingredient = normalize((row.get("ingredient") or "").strip())
+            basis = (row.get("basis") or "").strip()
+            for allergen in (row.get("allergens") or "").split(";"):
+                allergen = allergen.strip().lower()
+                if ingredient and allergen:
+                    yield ingredient, allergen, basis
+
+
+def _read_substitutions(path: Path):
+    """Yield sourced swaps; each one lists the normalized ingredients it covers."""
+    if not path.is_file():
+        return
+    with path.open(newline="", encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            values = {k: (row.get(k) or "").strip() for k in (
+                "ingredient", "applies_to", "substitute", "use_when",
+                "substitute_contains", "source_name", "source_url")}
+            if not (values["ingredient"] and values["substitute"]
+                    and values["source_url"].startswith("https://")):
+                continue  # never store an unsourced swap
+            covers = {normalize(x) for x in values["applies_to"].split(";") if normalize(x)}
+            covers.add(normalize(values["ingredient"]))
+            yield values, sorted(c for c in covers if c)
 
 
 def create_database(csv_path: str | Path | None = None,
@@ -123,7 +157,29 @@ def create_database(csv_path: str | Path | None = None,
                     category TEXT NOT NULL,
                     cuisine TEXT,
                     main_protein TEXT,
+                    allergens TEXT NOT NULL DEFAULT '',
                     UNIQUE(title, url)
+                );
+                CREATE TABLE ingredient_allergens (
+                    ingredient TEXT NOT NULL,
+                    allergen TEXT NOT NULL,
+                    basis TEXT NOT NULL,
+                    PRIMARY KEY(ingredient, allergen)
+                );
+                CREATE TABLE substitutions (
+                    id INTEGER PRIMARY KEY,
+                    ingredient TEXT NOT NULL,
+                    applies_to TEXT NOT NULL,
+                    substitute TEXT NOT NULL,
+                    use_when TEXT NOT NULL,
+                    substitute_contains TEXT NOT NULL,
+                    source_name TEXT NOT NULL,
+                    source_url TEXT NOT NULL
+                );
+                CREATE TABLE substitution_targets (
+                    substitution_id INTEGER NOT NULL REFERENCES substitutions(id) ON DELETE CASCADE,
+                    ingredient TEXT NOT NULL,
+                    PRIMARY KEY(substitution_id, ingredient)
                 );
                 CREATE TABLE ingredients (
                     id INTEGER PRIMARY KEY,
@@ -141,10 +197,10 @@ def create_database(csv_path: str | Path | None = None,
             ingredient_ids = {}
             for record in records.values():
                 cursor = con.execute("""INSERT INTO recipes
-                    (title, url, category, cuisine, main_protein)
-                    VALUES (?, ?, ?, ?, ?)""", (
+                    (title, url, category, cuisine, main_protein, allergens)
+                    VALUES (?, ?, ?, ?, ?, ?)""", (
                     record["title"], record["url"], record["category"],
-                    record["cuisine"], record["main_protein"],
+                    record["cuisine"], record["main_protein"], record["allergens"],
                 ))
                 recipe_id = cursor.lastrowid
                 for ingredient, original in record["ingredients"].items():
@@ -156,6 +212,23 @@ def create_database(csv_path: str | Path | None = None,
                     con.execute("""INSERT INTO recipe_ingredients
                         (recipe_id, ingredient_id, original_text) VALUES (?, ?, ?)""",
                         (recipe_id, ingredient_ids[ingredient], original))
+            for ingredient, allergen, basis in _read_allergen_map(ALLERGEN_CSV):
+                con.execute("""INSERT INTO ingredient_allergens(ingredient, allergen, basis)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(ingredient, allergen) DO UPDATE SET
+                    basis = CASE WHEN instr(basis, excluded.basis) THEN basis
+                                 ELSE basis || '; ' || excluded.basis END""",
+                    (ingredient, allergen, basis))
+            for swap, covers in _read_substitutions(SUBSTITUTIONS_CSV):
+                cursor = con.execute("""INSERT INTO substitutions
+                    (ingredient, applies_to, substitute, use_when, substitute_contains,
+                     source_name, source_url) VALUES (?, ?, ?, ?, ?, ?, ?)""", (
+                    swap["ingredient"], swap["applies_to"], swap["substitute"],
+                    swap["use_when"], swap["substitute_contains"],
+                    swap["source_name"], swap["source_url"]))
+                con.executemany(
+                    "INSERT OR IGNORE INTO substitution_targets VALUES (?, ?)",
+                    [(cursor.lastrowid, c) for c in covers])
             count = con.execute("SELECT COUNT(*) FROM recipes").fetchone()[0]
         os.replace(temporary_name, dest)
         return count
@@ -170,7 +243,8 @@ def database_is_stale(db_path: str | Path = DEFAULT_DB,
     db = Path(db_path)
     if not db.is_file():
         return True
-    sources = [Path(csv_path) if csv_path else preferred_csv(), ROOT / "fridgechef.py"]
+    sources = [Path(csv_path) if csv_path else preferred_csv(), ROOT / "fridgechef.py",
+               ROOT / "database.py", ALLERGEN_CSV, SUBSTITUTIONS_CSV]
     db_time = db.stat().st_mtime
     return any(s.is_file() and s.stat().st_mtime > db_time for s in sources)
 
@@ -182,7 +256,7 @@ def load_db_recipes(db_path: str | Path = DEFAULT_DB) -> list[dict]:
     with closing(connect(db_path)) as con:
         rows = con.execute("""
             SELECT r.id, r.title, r.url, r.category, r.cuisine, r.main_protein,
-                   i.name AS ingredient
+                   r.allergens, i.name AS ingredient
             FROM recipes AS r
             JOIN recipe_ingredients AS ri ON ri.recipe_id = r.id
             JOIN ingredients AS i ON i.id = ri.ingredient_id
@@ -199,7 +273,43 @@ def load_db_recipes(db_path: str | Path = DEFAULT_DB) -> list[dict]:
                 "category": row["category"],
                 "cuisine": row["cuisine"] or "",
                 "main_protein": row["main_protein"] or "",
+                "allergens": [a.strip() for a in (row["allergens"] or "").split(";")
+                              if a.strip() and a.strip().lower() != "none"],
                 "ingredient_list": [],
             }
         recipes[rid]["ingredient_list"].append(row["ingredient"])
     return list(recipes.values())
+
+
+def load_allergen_map(db_path: str | Path = DEFAULT_DB) -> dict[str, dict]:
+    """{normalized ingredient: {"allergens": [...], "basis": str}} from the database."""
+    with closing(connect(db_path)) as con:
+        rows = con.execute("""SELECT ingredient, allergen, basis
+            FROM ingredient_allergens ORDER BY ingredient, allergen""").fetchall()
+    result: dict[str, dict] = {}
+    for row in rows:
+        entry = result.setdefault(row["ingredient"], {"allergens": [], "basis": set()})
+        entry["allergens"].append(row["allergen"])
+        entry["basis"].update(b.strip() for b in row["basis"].split(";") if b.strip())
+    return {k: {"allergens": v["allergens"], "basis": "; ".join(sorted(v["basis"]))}
+            for k, v in result.items()}
+
+
+def load_substitutions(db_path: str | Path = DEFAULT_DB) -> dict[str, list[dict]]:
+    """{normalized ingredient: [sourced swap, ...]} from the database."""
+    with closing(connect(db_path)) as con:
+        rows = con.execute("""SELECT t.ingredient AS target, s.*
+            FROM substitution_targets AS t JOIN substitutions AS s ON s.id = t.substitution_id
+            ORDER BY s.id""").fetchall()
+    result: dict[str, list[dict]] = {}
+    for row in rows:
+        result.setdefault(row["target"], []).append({
+            "ingredient": row["ingredient"],
+            "applies_to": [x.strip() for x in row["applies_to"].split(";") if x.strip()],
+            "substitute": row["substitute"],
+            "use_when": row["use_when"],
+            "substitute_contains": row["substitute_contains"],
+            "source_name": row["source_name"],
+            "source_url": row["source_url"],
+        })
+    return result

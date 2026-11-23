@@ -274,10 +274,37 @@ def default_data_path():
     return v2 if v2.is_file() else here / "recipes.csv"
 
 
+def render_recommendations(results, method, pantry_text, record_count, have_basics):
+    """Format recommend() output for the terminal and sample_output.txt."""
+    lines = [
+        f"METHOD: {method.upper()}",
+        f"Recipe records loaded: {record_count}",
+        "Pantry: " + pantry_text,
+        "Assume pantry basics: " + ("yes" if have_basics else "no"),
+        "-" * 78,
+    ]
+    if not results:
+        lines.append("No recipes use any of these ingredients.")
+    for number, r in enumerate(results, 1):
+        shown = "random pick" if method == "random" else f"{r['score']:.3f}"
+        lines.append(f"{number}. {r['title']} | score={shown} | category={r['category']}")
+        lines.append("   Matched (pantry or assumed basics): " + (", ".join(r["matched_ingredients"]) or "none"))
+        lines.append("   Missing from pantry: " + (", ".join(r["missing_ingredients"]) or "none"))
+        lines.append("   May contain (check the recipe): " + (", ".join(r["allergens"]) or "none tracked"))
+        lines.append("   Source: " + r["url"])
+    lines.append("")
+    return "\n".join(lines)
+
+
 def main():
+    # Imported here because recommend.py imports this module.
+    import tempfile
+    from database import create_database, preferred_csv
+    from recommend import DEFAULT_HAVE_BASICS, METHODS as APP_METHODS, recommend
+
     script_dir = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser(
-        description="FridgeChef recipe matcher: Jaccard baseline, TF-IDF cosine similarity, and coverage."
+        description="FridgeChef recipe matcher (same recommend() function the website and evaluation use)."
     )
     parser.add_argument(
         "--ingredients",
@@ -286,7 +313,7 @@ def main():
     )
     parser.add_argument(
         "--method",
-        choices=["all", "both"] + METHODS,
+        choices=["all", "both"] + list(APP_METHODS),
         default="all",
         help="Which method to run. Default: all five (Jaccard, TF-IDF, coverage, weighted coverage, random); both = Jaccard + TF-IDF.",
     )
@@ -302,28 +329,48 @@ def main():
         help="File to overwrite with the latest results. Defaults to sample_output.txt beside this script.",
     )
     parser.add_argument("--seed", type=int, default=0, help="Seed for the random-picks baseline.")
-    parser.add_argument("--no-basics", action="store_true", help="Require salt, pepper, oil, water, and butter to be explicitly supplied.")
+    basics = parser.add_mutually_exclusive_group()
+    basics.add_argument("--no-basics", dest="have_basics", action="store_false",
+                        help="Require salt, pepper, oil, water, and butter to be explicitly supplied.")
+    basics.add_argument("--basics", dest="have_basics", action="store_true",
+                        help="Treat salt, pepper, oil, water, and butter as owned (default).")
+    parser.set_defaults(have_basics=DEFAULT_HAVE_BASICS)
     args = parser.parse_args()
 
-    if args.top < 1:
-        parser.error("--top must be at least 1.")
+    if not 1 <= args.top <= 25:
+        parser.error("--top must be between 1 and 25.")
+    methods = list(APP_METHODS) if args.method == "all" else (
+        ["jaccard", "tfidf"] if args.method == "both" else [args.method])
 
-    try:
-        recipes = load_recipes(args.data)
-        if not any(normalize(i) for i in args.ingredients.split(",")):
-            raise ValueError("Enter at least one ingredient, separated by commas.")
-    except (ValueError, OSError) as exc:
-        parser.error(str(exc))
-    methods = list(METHODS) if args.method == "all" else (["jaccard", "tfidf"] if args.method == "both" else [args.method])
+    data_path = Path(args.data).expanduser().resolve()
+    with tempfile.TemporaryDirectory(prefix="fridgechef-cli-") as directory:
+        # The default dataset uses the app's recipes.db; any other CSV gets its
+        # own temporary database so the shared one is never overwritten.
+        use_shared = data_path == preferred_csv().resolve()
+        db_kwargs = {} if use_shared else {"db_path": Path(directory) / "recipes.sqlite",
+                                           "data_path": data_path}
+        try:
+            if not use_shared:
+                create_database(data_path, db_kwargs["db_path"])
+            from database import DEFAULT_DB, load_db_recipes
+            results = {m: recommend(args.ingredients, method=m, top_n=args.top,
+                                    have_basics=args.have_basics, seed=args.seed, **db_kwargs)
+                       for m in methods}
+            record_count = len(load_db_recipes(db_kwargs.get("db_path", DEFAULT_DB)))
+        except (ValueError, OSError) as exc:
+            parser.error(str(exc))
+
+    pantry_text = ", ".join(sorted({normalize(i) for i in args.ingredients.split(",") if normalize(i)}))
     sections = [
         "FRIDGECHEF — RECOMMENDATION RUN",
         f"Generated: {datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')}",
-        f"Data file: {Path(args.data).resolve()}",
-        f"Unique recipe records loaded: {len(recipes)}",
+        f"Data file: {data_path}",
+        f"Unique recipe records loaded: {record_count}",
         "",
     ]
     for method in methods:
-        sections.append(render_method(args.ingredients, recipes, method, args.top, not args.no_basics, args.seed))
+        sections.append(render_recommendations(results[method], method, pantry_text,
+                                               record_count, args.have_basics))
         sections.append(
             "Interpretation note: scores measure ingredient-text similarity/overlap, "
             "not recipe quality, nutrition, allergies, or food safety."

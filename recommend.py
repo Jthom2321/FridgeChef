@@ -6,6 +6,10 @@ Example:
 
 Use the same function everywhere to avoid inconsistent results. Normalization and
 ranking still delegate to fridgechef.py, which Mikayla can improve independently.
+
+The command line (fridgechef.py), the website (api.py) and the hidden-list
+evaluation (evaluate.py) all call recommend() and all take their defaults from
+DEFAULT_METHOD / DEFAULT_HAVE_BASICS below, so there is only one FridgeChef.
 """
 
 from __future__ import annotations
@@ -14,10 +18,16 @@ import re
 from pathlib import Path
 from typing import Sequence
 
-from database import DEFAULT_DB, create_database, database_is_stale, load_db_recipes
-from fridgechef import is_basic, normalize, rank_recipes
+from database import (DEFAULT_DB, create_database, database_is_stale, load_allergen_map,
+                      load_db_recipes, load_substitutions)
+from fridgechef import BASICS, METHODS as RANKING_METHODS, is_basic, normalize, rank_recipes
 
-METHODS = ("jaccard", "tfidf", "coverage")
+# Single source of truth for every caller (CLI, website, evaluation).
+METHODS = tuple(RANKING_METHODS)  # jaccard, tfidf, coverage, weighted, random
+DEFAULT_METHOD = "jaccard"
+DEFAULT_HAVE_BASICS = True  # the website always sent True; the CLI defaulted to True
+DEFAULT_SEED = 0            # makes the random baseline repeatable
+__all__ = ["BASICS", "METHODS", "DEFAULT_METHOD", "DEFAULT_HAVE_BASICS", "recommend"]
 MAX_INGREDIENTS = 40
 MAX_INPUT_CHARS = 2000
 
@@ -48,24 +58,30 @@ def _parse_ingredients(ingredients: str | Sequence[str]) -> list[str]:
     return pantry
 
 
-def recommend(ingredients: str | Sequence[str], method: str = "jaccard",
-              top_n: int = 5, *, have_basics: bool = False,
+def recommend(ingredients: str | Sequence[str], method: str = DEFAULT_METHOD,
+              top_n: int = 5, *, have_basics: bool = DEFAULT_HAVE_BASICS,
               db_path: str | Path = DEFAULT_DB,
-              data_path: str | Path | None = None) -> list[dict]:
+              data_path: str | Path | None = None,
+              seed: int = DEFAULT_SEED) -> list[dict]:
     """Return ranked recipe dictionaries with scores and ingredient breakdowns.
 
     Args:
         ingredients: comma-separated pantry text or a list of ingredient names.
-        method: 'jaccard', 'tfidf', or 'coverage'.
+        method: 'jaccard' (baseline), 'tfidf', 'coverage', 'weighted'
+            (weighted coverage), or 'random' (chance baseline, score 0.0).
         top_n: number of results, from 1 through 25.
         have_basics: treat salt, pepper, oil, water, and butter as already owned,
             so they are neither required nor listed as missing.
         db_path: SQLite file; (re)built from recipes_v2.csv / recipes.csv when it
             is missing or older than the CSV or fridgechef.py.
         data_path: optional recipe CSV to use instead of the default dataset.
+        seed: seed for the random baseline so its picks are repeatable.
 
     Returns:
-        [] when none of the recipes matches the user's ingredients.
+        [] when none of the recipes matches the user's ingredients. Each
+        result also carries `allergens` (Enioluwa's hand-checked recipe-level
+        list), `allergen_ingredients` (which ingredient triggers each one) and
+        `substitutions` (sourced swaps for the missing ingredients).
 
     Raises:
         ValueError for malformed/empty/excessive input or unknown methods.
@@ -94,10 +110,14 @@ def recommend(ingredients: str | Sequence[str], method: str = "jaccard",
         return []
 
     _, ranked = rank_recipes(", ".join(pantry), recipes, method, top_n,
-                             assume_basics=have_basics)
+                             assume_basics=have_basics, seed=seed)
+    allergen_map = load_allergen_map(db)
+    swaps = load_substitutions(db)
     result = []
     for score, recipe, missing, matched in ranked:
-        if score <= 0:
+        if method == "random":
+            score = 0.0  # chance baseline: picks are unranked, not scored
+        elif score <= 0:
             continue
         # Coverage counts only ingredients the user actually entered, not
         # basics that were assumed.
@@ -115,5 +135,14 @@ def recommend(ingredients: str | Sequence[str], method: str = "jaccard",
             "matched_ingredients": matched,
             "missing_ingredients": missing,
             "total_ingredients": len(recipe["ingredient_list"]),
+            "allergens": list(recipe.get("allergens", [])),
+            "allergen_ingredients": [
+                {"ingredient": i, **allergen_map[i]}
+                for i in recipe["ingredient_list"] if i in allergen_map
+            ],
+            "substitutions": [
+                {"for_ingredient": i, **swap}
+                for i in missing for swap in swaps.get(i, [])
+            ],
         })
     return result

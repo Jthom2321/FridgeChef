@@ -5,7 +5,7 @@ import tempfile
 
 from database import create_database
 from fridgechef import default_data_path, ingredients_match, is_basic, normalize
-from recommend import METHODS, recommend
+from recommend import DEFAULT_HAVE_BASICS, METHODS, recommend
 
 
 MAX_EXTRA_INGREDIENTS = 3
@@ -131,6 +131,7 @@ def evaluate_lists(lists, db_path, data_path=None):
                 item["ingredients"],
                 method=method,
                 top_n=TOP_N,
+                have_basics=DEFAULT_HAVE_BASICS,
                 db_path=db_path,
                 data_path=data_path,
             )
@@ -342,13 +343,7 @@ def main():
         )
     else:
         print("Seth's marks are not present; agreement and differences remain pending.")
-    unavailable = {"random", "weighted_coverage"} - set(METHODS)
-    if unavailable:
-        print(
-            "Not run because the shared recommender does not implement these methods: "
-            + ", ".join(sorted(unavailable))
-            + "."
-        )
+    print(f"Methods evaluated: {', '.join(METHODS)} (have_basics={DEFAULT_HAVE_BASICS}).")
 
 
 if __name__ == "__main__":

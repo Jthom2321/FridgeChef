@@ -79,6 +79,7 @@ class EvaluateTests(unittest.TestCase):
                 "egg, spinach",
                 method=method,
                 top_n=5,
+                have_basics=True,
                 db_path=db_path,
                 data_path="recipes.csv",
             )

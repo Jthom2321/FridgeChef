@@ -10,9 +10,11 @@ parts while using the app.
     python build_db.py                      # load recipes_v2.csv (120 recipes) into recipes.db
     python fridgechef.py --ingredients "eggs, spinach, garlic, pasta"
     python compare_practice.py              # before/after on the 10 practice lists
-    python -m unittest test_matching tests.test_evaluate
+    python -m unittest test_matching tests.test_evaluate tests.test_api tests.test_parity
 
-All scripts default to `recipes_v2.csv` and fall back to `recipes.csv` if it is missing. The website should call `recommend()` from `recommend.py`; it rebuilds `recipes.db` automatically when the CSV or `fridgechef.py` is newer than the database. `have_basics=True` treats salt, pepper, oil, water, and butter as already owned.
+All scripts default to `recipes_v2.csv` and fall back to `recipes.csv` if it is missing. The command line, the website (`api.py`) and `evaluate.py` all call `recommend()` from `recommend.py`, and all take their defaults from it (`DEFAULT_METHOD = "jaccard"`, `DEFAULT_HAVE_BASICS = True`). `recommend()` rebuilds `recipes.db` automatically when the recipe CSV, `allergen_map.csv`, `substitutions.csv`, `fridgechef.py` or `database.py` is newer than the database. `have_basics=True` treats salt, pepper, oil, water, and butter as already owned; pass `--no-basics` on the command line to turn it off.
+
+Methods: `jaccard` (baseline), `tfidf`, `coverage`, `weighted` (weighted coverage), and `random` (seeded chance baseline; its score is always 0.0). Every result also includes `allergens` (the recipe's hand-checked allergen list), `allergen_ingredients` (which ingredient triggers each allergen), and `substitutions` (sourced swaps for the missing ingredients), all loaded into `recipes.db` by `build_db.py`. `tests/test_parity.py` checks that the website, command line, and evaluation return the identical top 5 for the same ingredients.
 
 
 ## What it does
@@ -115,7 +117,7 @@ both devices to the same network.
 ## Hidden-list evaluation
 - The 10 hidden inputs are kept in `evaluation/hidden_lists.csv`. The lists cover ordinary pantry combinations, unsupported cuisines, and edge cases.
 - **Good-result rule:** A recipe is good only when it matches at least two of the user's ingredients and has no more than three missing non-basic ingredients.
-- `evaluate.py` calls `recommend()` from `recommend.py`, so it evaluates the same rankings the app returns. It currently evaluates Jaccard, TF-IDF, and coverage; random and weighted coverage are not yet exposed by the shared recommender.
+- `evaluate.py` calls `recommend()` from `recommend.py` with the app's `have_basics=True` default, so it evaluates the same rankings the app returns. It evaluates all five methods: random, Jaccard, TF-IDF, coverage, and weighted coverage.
 - The per-recommendation worksheet records the matching pantry count, missing non-basic ingredients, and rule-based good/not-good mark. It preserves Seth's existing marks if results still match, but does not create independent judgments.
 
 Run the evaluation:
