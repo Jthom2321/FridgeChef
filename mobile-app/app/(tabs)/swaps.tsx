@@ -1,80 +1,139 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors, Fonts, Tints } from '@/constants/theme';
-import { QUICK_SWAPS, SYNONYMS } from '@/data/recipes';
+import { Colors, Fonts } from '@/constants/theme';
+import { fetchSwaps, type IngredientSwap } from '@/services/recommendations';
 
 export default function SwapsScreen() {
   const insets = useSafeAreaInsets();
+  const [searchText, setSearchText] = useState('');
   const [query, setQuery] = useState('');
+  const [swaps, setSwaps] = useState<IngredientSwap[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [sourceError, setSourceError] = useState<string | null>(null);
 
-  const q = query.trim().toLowerCase();
-  const synonyms = SYNONYMS.filter((s) => !q || s.a.toLowerCase().includes(q) || s.b.toLowerCase().includes(q));
-  const swaps = QUICK_SWAPS.filter((s) => !q || s.outOf.toLowerCase().includes(q) || s.use.toLowerCase().includes(q));
+  useEffect(() => {
+    const controller = new AbortController();
+    setSwaps([]);
+    setLoading(true);
+    setError(null);
+    fetchSwaps(query, controller.signal)
+      .then((results) => {
+        if (!controller.signal.aborted) setSwaps(results);
+      })
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) {
+          setError(cause instanceof Error ? cause.message : 'Could not load ingredient substitutions.');
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [query]);
+
+  const search = () => setQuery(searchText.trim());
+  const clearSearch = () => {
+    setSearchText('');
+    setQuery('');
+  };
+
+  const openSource = async (swap: IngredientSwap) => {
+    if (!/^https:\/\//i.test(swap.source_url)) {
+      setSourceError('This substitution does not have a valid source URL.');
+      return;
+    }
+    try {
+      await Linking.openURL(swap.source_url);
+      setSourceError(null);
+    } catch {
+      setSourceError('Could not open the substitution source.');
+    }
+  };
 
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 24 }]}
       keyboardShouldPersistTaps="handled">
-      <View>
-        <Text style={styles.eyebrow}>Ingredient Translator</Text>
-        <Text style={styles.title} accessibilityRole="header">
-          Same food, different name.
+      <Text style={styles.title} accessibilityRole="header">Ingredient swaps</Text>
+      <Text style={styles.intro}>
+        Browse sourced substitution ideas or search by the ingredient you want to replace.
+      </Text>
+
+      <View style={styles.searchRow}>
+        <TextInput
+          accessibilityLabel="Search substitutions by ingredient"
+          value={searchText}
+          onChangeText={setSearchText}
+          onSubmitEditing={search}
+          placeholder="e.g. eggs, buttermilk, soy sauce"
+          placeholderTextColor={Colors.muted}
+          returnKeyType="search"
+          style={styles.searchInput}
+        />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Search swaps"
+          onPress={search}
+          style={({ pressed }) => [styles.searchButton, pressed && styles.pressed]}>
+          <Ionicons name="search" size={18} color="#FFFFFF" />
+        </Pressable>
+        {query.length > 0 && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Clear swap search"
+            onPress={clearSearch}
+            style={styles.clearButton}>
+            <Ionicons name="close-circle" size={22} color={Colors.muted} />
+          </Pressable>
+        )}
+      </View>
+
+      <View style={styles.notice}>
+        <Ionicons name="information-circle-outline" size={20} color={Colors.accent} />
+        <Text style={styles.noticeText}>
+          These are sourced suggestions, not guaranteed replacements. Check the source’s use notes and product labels.
+          Allergen notes reflect the supplied data and are not a safety guarantee.
         </Text>
       </View>
 
-      <View style={styles.field}>
-        <Text style={styles.label} nativeID="swap-q-label">
-          Look up a swap or a name
+      {loading && <Text style={styles.status}>Loading substitutions…</Text>}
+      {error && <Text style={styles.error}>{error}</Text>}
+      {sourceError && <Text style={styles.error}>{sourceError}</Text>}
+      {!loading && !error && swaps.length === 0 && (
+        <Text style={styles.status}>
+          {query ? `No sourced substitutions found for “${query}”.` : 'No sourced substitutions are available.'}
         </Text>
-        <View style={styles.inputRow}>
-          <Ionicons name="search" size={18} color={Colors.muted} />
-          <TextInput
-            accessibilityLabelledBy="swap-q-label"
-            value={query}
-            onChangeText={setQuery}
-            placeholder="e.g. buttermilk"
-            placeholderTextColor={Colors.muted}
-            returnKeyType="search"
-            style={styles.input}
-          />
-        </View>
-      </View>
-
-      {synonyms.length > 0 && (
-        <View style={styles.card} accessibilityLabel="Names we treat as the same">
-          <Text style={styles.sectionTitle}>We read these as one ingredient</Text>
-          {synonyms.map((s) => (
-            <View key={s.a} style={styles.synonymRow}>
-              <Text style={[styles.synonym, { backgroundColor: Tints[s.tint].bg }]}>{s.a}</Text>
-              <Ionicons name="swap-horizontal" size={20} color={Colors.muted} />
-              <Text style={[styles.synonym, { backgroundColor: Tints[s.tint].bg }]}>{s.b}</Text>
-            </View>
-          ))}
-        </View>
       )}
 
-      <View style={styles.section} accessibilityLabel="Quick swaps">
-        <Text style={styles.sectionTitle}>Quick swaps</Text>
-        {swaps.map((s) => (
-          <View key={s.outOf} style={styles.swapCard}>
-            <Text style={styles.swapOutOf}>OUT OF {s.outOf.toUpperCase()}</Text>
-            <Text style={styles.swapUse}>{s.use}</Text>
+      {swaps.map((swap, index) => (
+        <View key={`${swap.ingredient}-${index}`} style={styles.card}>
+          <Text style={styles.cardTitle}>Replace {swap.ingredient}</Text>
+          <Text style={styles.detail}>
+            Applies to: {swap.applies_to.join(', ')}
+          </Text>
+          <Text style={styles.substitute}>{swap.substitute}</Text>
+          <Text style={styles.detail}>Use when: {swap.use_when}</Text>
+          <View style={styles.allergenNote}>
+            <Text style={styles.allergenLabel}>Substitute allergen note</Text>
+            <Text style={styles.detail}>{swap.substitute_contains}</Text>
           </View>
-        ))}
-        {swaps.length === 0 && <Text style={styles.empty}>No swaps for “{query.trim()}” yet.</Text>}
-      </View>
-
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => Alert.alert('Flag a name', 'Reporting wrong matches is coming soon.')}
-        style={styles.flagButton}>
-        <Ionicons name="flag-outline" size={18} color={Colors.ink} />
-        <Text style={styles.flagText}>Flag a name we got wrong</Text>
-      </Pressable>
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel={`Open source: ${swap.source_name}`}
+            onPress={() => {
+              void openSource(swap);
+            }}
+            style={({ pressed }) => [styles.sourceButton, pressed && styles.sourcePressed]}>
+            <Text style={styles.sourceText}>{swap.source_name}</Text>
+            <Ionicons name="open-outline" size={16} color={Colors.accent} />
+          </Pressable>
+        </View>
+      ))}
     </ScrollView>
   );
 }
@@ -89,114 +148,130 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
     gap: 14,
   },
-  eyebrow: {
-    fontFamily: Fonts.regular,
-    fontSize: 13,
-    color: Colors.muted,
-  },
   title: {
-    marginTop: 2,
     fontFamily: Fonts.display,
     fontSize: 28,
-    lineHeight: 30,
     letterSpacing: -0.5,
     color: Colors.ink,
   },
-  field: {
-    gap: 6,
-  },
-  label: {
-    fontFamily: Fonts.semibold,
-    fontSize: 12,
+  intro: {
+    fontFamily: Fonts.regular,
+    fontSize: 13,
+    lineHeight: 19,
     color: Colors.muted,
   },
-  inputRow: {
+  searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    minHeight: 50,
-    paddingHorizontal: 14,
-    backgroundColor: Colors.surface,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-    borderRadius: 16,
   },
-  input: {
+  searchInput: {
     flex: 1,
     minWidth: 0,
-    height: 44,
+    height: 48,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    backgroundColor: Colors.surface,
     fontFamily: Fonts.regular,
-    fontSize: 15,
+    fontSize: 14,
     color: Colors.ink,
     outlineWidth: 0,
     outlineColor: 'transparent',
   },
+  searchButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: Colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pressed: {
+    backgroundColor: Colors.accentPressed,
+  },
+  clearButton: {
+    width: 26,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    borderRadius: 14,
+    backgroundColor: Colors.successSoft,
+    padding: 12,
+  },
+  noticeText: {
+    flex: 1,
+    fontFamily: Fonts.regular,
+    fontSize: 12,
+    lineHeight: 18,
+    color: Colors.ink,
+  },
+  status: {
+    paddingVertical: 16,
+    fontFamily: Fonts.regular,
+    fontSize: 13,
+    color: Colors.muted,
+    textAlign: 'center',
+  },
+  error: {
+    fontFamily: Fonts.semibold,
+    fontSize: 13,
+    lineHeight: 19,
+    color: Colors.accent,
+  },
   card: {
     backgroundColor: Colors.surface,
     borderRadius: 20,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    padding: 16,
     gap: 10,
   },
-  sectionTitle: {
+  cardTitle: {
     fontFamily: Fonts.bold,
-    fontSize: 15,
+    fontSize: 16,
     color: Colors.ink,
   },
-  synonymRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  synonym: {
-    flex: 1,
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    overflow: 'hidden',
+  substitute: {
     fontFamily: Fonts.semibold,
     fontSize: 14,
+    lineHeight: 20,
     color: Colors.ink,
   },
-  section: {
-    gap: 8,
-  },
-  swapCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    gap: 3,
-  },
-  swapOutOf: {
-    fontFamily: Fonts.bold,
-    fontSize: 12,
-    color: Colors.accent,
-  },
-  swapUse: {
-    fontFamily: Fonts.semibold,
-    fontSize: 14,
-    color: Colors.ink,
-  },
-  empty: {
+  detail: {
     fontFamily: Fonts.regular,
-    fontSize: 14,
+    fontSize: 12,
+    lineHeight: 18,
     color: Colors.muted,
   },
-  flagButton: {
+  allergenNote: {
+    borderRadius: 12,
+    backgroundColor: Colors.background,
+    padding: 10,
+    gap: 4,
+  },
+  allergenLabel: {
+    fontFamily: Fonts.semibold,
+    fontSize: 12,
+    color: Colors.ink,
+  },
+  sourceButton: {
+    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    minHeight: 48,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: Colors.dashed,
+    gap: 6,
+    paddingVertical: 4,
   },
-  flagText: {
+  sourcePressed: {
+    opacity: 0.7,
+  },
+  sourceText: {
     fontFamily: Fonts.semibold,
-    fontSize: 14,
-    color: Colors.ink,
+    fontSize: 12,
+    color: Colors.accent,
   },
 });

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
 import type { TintName } from '@/constants/theme';
-import { STARTER_FRIDGE, type FridgeItem } from '@/data/recipes';
+import { STARTER_FRIDGE, type FridgeItem } from '@/data/fridge';
 
 const TINT_CYCLE: TintName[] = ['butter', 'sky', 'mint', 'peach'];
 
@@ -9,18 +9,18 @@ type FridgeState = {
   items: FridgeItem[];
   addItem: (name: string) => void;
   removeItem: (name: string) => void;
+  allergies: string[];
+  toggleAllergy: (allergen: string) => void;
   saved: string[];
   toggleSaved: (recipeId: string) => void;
-  allergies: string[];
-  toggleAllergy: (allergy: string) => void;
 };
 
 const FridgeContext = createContext<FridgeState | null>(null);
 
 export function FridgeProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<FridgeItem[]>(STARTER_FRIDGE);
-  const [saved, setSaved] = useState<string[]>([]);
   const [allergies, setAllergies] = useState<string[]>([]);
+  const [saved, setSaved] = useState<string[]>([]);
 
   useEffect(() => {
     setItems((current) => {
@@ -43,14 +43,16 @@ export function FridgeProvider({ children }: { children: React.ReactNode }) {
         );
       },
       removeItem: (name) => setItems((prev) => prev.filter((i) => i.name !== name)),
+      allergies,
+      toggleAllergy: (allergen) =>
+        setAllergies((prev) =>
+          prev.includes(allergen) ? prev.filter((item) => item !== allergen) : [...prev, allergen]
+        ),
       saved,
       toggleSaved: (id) =>
         setSaved((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id])),
-      allergies,
-      toggleAllergy: (allergy) =>
-        setAllergies((prev) => (prev.includes(allergy) ? prev.filter((item) => item !== allergy) : [...prev, allergy])),
     }),
-    [items, saved, allergies]
+    [allergies, items, saved]
   );
 
   return <FridgeContext.Provider value={value}>{children}</FridgeContext.Provider>;
