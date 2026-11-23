@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from database import DEFAULT_DB, create_database, load_db_recipes
 from fridgechef import ingredients_match, normalize
-from recommend import BASICS, METHODS, recommend
+from recommend import BASICS, DEFAULT_HAVE_BASICS, DEFAULT_METHOD, METHODS, recommend
 
 ALLERGEN_MAP = Path(__file__).with_name("allergen_map.csv")
 SWAPS_CSV = Path(__file__).with_name("substitutions.csv")
@@ -24,9 +24,26 @@ SWAPS_CSV = Path(__file__).with_name("substitutions.csv")
 
 class RecommendationRequest(BaseModel):
     ingredients: str | list[str]
-    method: str = "jaccard"
+    method: str = DEFAULT_METHOD
     top_n: int = Field(default=5, ge=1, le=25)
-    have_basics: bool = False
+    have_basics: bool = DEFAULT_HAVE_BASICS
+
+
+class AllergenSource(BaseModel):
+    ingredient: str
+    allergens: list[str]
+    basis: str
+
+
+class RecipeSwap(BaseModel):
+    for_ingredient: str
+    ingredient: str
+    applies_to: list[str]
+    substitute: str
+    use_when: str
+    substitute_contains: str
+    source_name: str
+    source_url: str
 
 
 class Recommendation(BaseModel):
@@ -42,6 +59,9 @@ class Recommendation(BaseModel):
     matched_ingredients: list[str]
     missing_ingredients: list[str]
     total_ingredients: int
+    allergens: list[str] = []
+    allergen_ingredients: list[AllergenSource] = []
+    substitutions: list[RecipeSwap] = []
 
 
 class RecipeDetails(BaseModel):
