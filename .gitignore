@@ -3,4 +3,5 @@ __pycache__/
 *.py[cod]
 recipes.db
 .tsupgrader/
-/__pycache__
+evaluation/hidden_lists.csv
+evaluation/hidden_*.csv

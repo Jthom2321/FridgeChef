@@ -1,4 +1,4 @@
-"""Add the allergens column to recipes_v2.csv from data/allergen_map.csv.
+"""Add the allergens column to recipes_v2.csv from allergen_map.csv.
 
 Each ingredient in the map was checked by hand. Recipes get the union of their
 ingredients' allergens. "none" means no tracked allergen was found in the
@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 ORDER = ["milk", "egg", "wheat/gluten", "peanut", "tree nut", "soy", "fish", "shellfish"]
 
 amap = {}
-with open(ROOT / "data" / "allergen_map.csv", encoding="utf-8") as f:
+with open(ROOT / "allergen_map.csv", encoding="utf-8") as f:
     for row in csv.DictReader(f):
         amap[row["ingredient"]] = [a.strip() for a in row["allergens"].split(";") if a.strip()]
 assert all(a in ORDER for v in amap.values() for a in v), "unknown allergen label"

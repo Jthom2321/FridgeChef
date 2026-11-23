@@ -35,7 +35,7 @@ Picked with `random.seed(365); random.sample(range(120), 20)`, then compared eac
 
 ## allergens column
 - Tracks 8 allergens: milk, egg, wheat/gluten, peanut, tree nut, soy, fish, shellfish.
-- `data/allergen_map.csv` maps every ingredient that contains one of them, with the reason. I went through all 470 distinct ingredients by hand; `data/add_allergens.py` applies the map.
+- `allergen_map.csv` maps every ingredient that contains one of them, with the reason. I went through all 470 distinct ingredients by hand; `data/add_allergens.py` applies the map.
 - Rules I used: Worcestershire = fish (anchovies). Mayonnaise = egg. Beer = wheat/gluten (barley). Peanut oil is listed as peanut to be safe. Shellfish includes mollusks (mussels, clams, oyster sauce). Coconut is **not** counted as a tree nut (the FDA took it off the list in 2025). Sesame is not tracked.
 - Packaged items (cake mix, crescent dough, vanilla wafers, gravy mix, etc.) change by brand. The map marks these "check label".
 - `none` means no tracked allergen was found in the ingredient list. It is **not** a guarantee. The app should say "may contain — check the recipe."
