@@ -1,3 +1,7 @@
+# FridgeChef
+
+FridgeChef is a local web app with an Expo frontend and a Python API. Run both
+parts while using the app.
 # FridgeChef — Checkpoint 2 Artifact
 
 ## Checkpoint 2 quick start
@@ -18,41 +22,95 @@ All scripts default to `recipes_v2.csv` and fall back to `recipes.csv` if it is 
 - Displays matched ingredients, missing ingredients, scores, and source URLs.
 - **Automatically overwrites `sample_output.txt` every time the program runs.** By default, both methods are run and saved.
 
-## Dataset
-The provided team CSV was cleaned into 50 unique, complete recipe records. Some ingredient fields used commas instead of semicolons, so they were standardized to semicolon-separated lists. The loader also supports a comma-separated ingredient field when no semicolons are present.
+## Run the app on Windows
 
-Keep these headers unchanged: `title`, `url`, `category`, `ingredients`. Prefer semicolons between ingredients, and quote CSV fields automatically when exporting from Google Sheets.
+You need **Python 3.10+**, **Node.js LTS** (which includes npm), and access to
+this repository.
 
-## Run
-Install dependencies:
+### 1. Download the project
 
-    python -m pip install -r requirements.txt
+If you do not already have the project on your computer, open PowerShell and run:
 
-Run both methods and refresh `sample_output.txt`:
+```powershell
+git clone https://github.com/Jthom2321/FridgeChef.git
+cd FridgeChef
+```
 
-    python fridgechef.py --ingredients "eggs, spinach, garlic, pasta"
+If you already have the project, open its folder in PowerShell instead.
 
-Run just the Jaccard baseline:
+### 2. Install dependencies (first time only)
 
-    python fridgechef.py --ingredients "eggs, spinach, garlic, pasta" --method jaccard
+Run these commands from the project folder:
 
-Run just TF-IDF:
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+cd mobile-app
+npm ci
+cd ..
+```
 
-    python fridgechef.py --ingredients "eggs, spinach, garlic, pasta" --method tfidf
+Keep `recipes.csv`, `allergen_map.csv`, and `substitutions.csv` in the project
+folder.
 
-Use a different CSV:
+### 3. Start the backend
 
-    python fridgechef.py --data "path/to/recipes.csv" --ingredients "eggs, spinach, garlic, pasta"
+Open a terminal in the project folder and run:
 
-Choose the number of recommendations:
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn api:app --host 127.0.0.1 --port 8000
+```
 
-    python fridgechef.py --top 10
+Leave this terminal running.
+
+### 4. Start the frontend
+
+Open a second terminal in the project folder and run:
+
+```powershell
+cd mobile-app
+npm run web
+```
+
+Open the local address printed in the terminal (usually
+`http://localhost:8081`). Leave both terminals running while you use FridgeChef.
+
+If the app cannot reach the API, check that the backend terminal is still
+running. The API documentation is at `http://localhost:8000/docs`.
+
+On macOS or Linux, use `.venv/bin/python` instead of
+`.venv\Scripts\python.exe` in the backend commands.
+
+## Data and limitations
+
+The app loads recipes from the API. Allergen matches are potential warnings,
+not a determination that a recipe is safe for someone with an allergy; check
+the original recipe and product labels. Substitution ideas include their
+sources and use notes, but may not work for every recipe. Cooking directions
+and expiration estimates are not included in the app data.
+
+## API reference
+
+- `GET /methods` lists recommendation methods.
+- `POST /recommend` returns recipe recommendations.
+- `GET /recipes/{recipe_id}` returns recipe details.
+- `POST /recipes/{recipe_id}/availability` checks ingredients against the fridge.
+- `POST /ingredients/check` checks ingredient spelling/catalog entries.
+- `GET /allergens` lists available allergen categories.
+- `GET /recipes/{recipe_id}/allergens` returns potential allergen matches.
+- `GET /swaps` lists sourced substitutions; add `?ingredient=eggs` to search.
+
+The API uses the same recommendation function as the command-line tool. Expo
+web's default API address is `http://localhost:8000`. For a physical phone,
+configure `EXPO_PUBLIC_API_URL` with your computer's LAN address and connect
+both devices to the same network.
 
 ## Important limitations
-- Jaccard and TF-IDF scores are ranking signals, not validated measures of recipe quality or usefulness.
-- Ingredient normalization is a starter implementation and may miss synonyms or interpret ingredient phrases imperfectly.
-- This prototype does not evaluate allergies, nutrition, or food safety.
-- This dataset is not evenly distributed among categories of recipies.
+
+- Recommendation scores are ranking signals, not validated measures of recipe quality.
+- Ingredient normalization may miss synonyms or interpret phrases imperfectly.
+- Allergen matches and substitutions are informational and are not food-safety advice.
+- The recipe dataset is not evenly distributed across categories.
 
 ## Hidden-list evaluation
 - The 10 hidden inputs are kept in `evaluation/hidden_lists.csv`. The lists cover ordinary pantry combinations, unsupported cuisines, and edge cases.

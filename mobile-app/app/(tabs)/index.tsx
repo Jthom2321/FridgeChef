@@ -1,11 +1,11 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, Fonts, Tints } from '@/constants/theme';
-import { ALLERGEN_OPTIONS, EXPIRING, RECIPES } from '@/data/recipes';
+import { checkIngredient, fetchAllergens, fetchRecommendations } from '@/services/recommendations';
 import { useFridge } from '@/hooks/use-fridge';
 
 // Small hand-placed tilts so the magnets look stuck on, not laid out.
@@ -16,15 +16,87 @@ export default function FridgeScreen() {
   const insets = useSafeAreaInsets();
   const { items, addItem, removeItem, allergies, toggleAllergy } = useFridge();
   const [draft, setDraft] = useState('');
+  const [checkingIngredient, setCheckingIngredient] = useState(false);
+  const [ingredientError, setIngredientError] = useState<string | null>(null);
+  const [suggestedIngredient, setSuggestedIngredient] = useState<string | null>(null);
+  const [unrecognizedIngredient, setUnrecognizedIngredient] = useState<string | null>(null);
+  const [rouletteLoading, setRouletteLoading] = useState(false);
+  const [rouletteError, setRouletteError] = useState<string | null>(null);
+  const [allergenOptions, setAllergenOptions] = useState<string[]>([]);
+  const [allergenLoading, setAllergenLoading] = useState(true);
+  const [allergenError, setAllergenError] = useState<string | null>(null);
 
-  const submit = () => {
-    addItem(draft);
-    setDraft('');
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchAllergens(controller.signal)
+      .then(setAllergenOptions)
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) {
+          setAllergenError(cause instanceof Error ? cause.message : 'Could not load allergen categories.');
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setAllergenLoading(false);
+      });
+    return () => controller.abort();
+  }, []);
+
+  const clearIngredientFeedback = () => {
+    setIngredientError(null);
+    setSuggestedIngredient(null);
+    setUnrecognizedIngredient(null);
   };
 
-  const fridgeRoulette = () => {
-    const pick = RECIPES[Math.floor(Math.random() * RECIPES.length)];
-    router.push({ pathname: '/recipe', params: { id: pick.id } });
+  const addFridgeIngredient = (name: string) => {
+    addItem(name);
+    setDraft('');
+    clearIngredientFeedback();
+  };
+
+  const submit = async () => {
+    const name = draft.trim();
+    if (!name || checkingIngredient) return;
+
+    setCheckingIngredient(true);
+    clearIngredientFeedback();
+    try {
+      const result = await checkIngredient(name);
+      if (result.suggestion) {
+        setIngredientError(`“${name}” may be misspelled. Did you mean “${result.suggestion}”?`);
+        setSuggestedIngredient(result.suggestion);
+      } else if (!result.recognized) {
+        setIngredientError(`“${name}” isn’t in the recipe catalog. Add it anyway?`);
+        setUnrecognizedIngredient(name);
+      } else {
+        addFridgeIngredient(name);
+      }
+    } catch (cause) {
+      setIngredientError(
+        cause instanceof Error
+          ? `Couldn’t check this ingredient. It wasn’t added. ${cause.message}`
+          : 'Couldn’t check this ingredient. It wasn’t added.'
+      );
+    } finally {
+      setCheckingIngredient(false);
+    }
+  };
+
+  const fridgeRoulette = async () => {
+    setRouletteLoading(true);
+    setRouletteError(null);
+    try {
+      const recipes = await fetchRecommendations(items.map((item) => item.name), 'jaccard', 25, true);
+      if (recipes.length === 0) {
+        setRouletteError('No recommendations for these ingredients yet.');
+        return;
+      }
+      const pick = recipes[Math.floor(Math.random() * recipes.length)];
+      router.push({ pathname: '/recommended-recipe', params: { id: String(pick.recipe_id) } });
+    } catch (cause) {
+      setRouletteError(cause instanceof Error ? cause.message : 'Could not find a surprise recipe.');
+    } finally {
+      setRouletteLoading(false);
+    }
   };
 
   return (
@@ -62,11 +134,17 @@ export default function FridgeScreen() {
           <TextInput
             accessibilityLabelledBy="add-ing-label"
             value={draft}
-            onChangeText={setDraft}
-            onSubmitEditing={submit}
+            onChangeText={(value) => {
+              setDraft(value);
+              clearIngredientFeedback();
+            }}
+            onSubmitEditing={() => {
+              void submit();
+            }}
             placeholder="e.g. chicken, tortillas…"
             placeholderTextColor={Colors.muted}
             returnKeyType="done"
+            editable={!checkingIngredient}
             style={styles.input}
           />
           <Pressable accessibilityRole="button" accessibilityLabel="Add by voice" style={[styles.inputButton, styles.voiceButton]}>
@@ -76,6 +154,30 @@ export default function FridgeScreen() {
             <Ionicons name="camera-outline" size={20} color="#FFFFFF" />
           </Pressable>
         </View>
+        {checkingIngredient && <Text style={styles.ingredientStatus}>Checking ingredient…</Text>}
+        {ingredientError && (
+          <View style={styles.ingredientValidation} accessibilityLiveRegion="polite">
+            <Text style={styles.ingredientError}>{ingredientError}</Text>
+            {suggestedIngredient && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Add ${suggestedIngredient} instead`}
+                onPress={() => addFridgeIngredient(suggestedIngredient)}
+                style={styles.ingredientAction}>
+                <Text style={styles.ingredientActionText}>Add {suggestedIngredient}</Text>
+              </Pressable>
+            )}
+            {unrecognizedIngredient && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Add ${unrecognizedIngredient} anyway`}
+                onPress={() => addFridgeIngredient(unrecognizedIngredient)}
+                style={styles.ingredientAction}>
+                <Text style={styles.ingredientActionText}>Add anyway</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
       </View>
 
       {/* Fridge door */}
@@ -91,55 +193,54 @@ export default function FridgeScreen() {
           {items.map((item, i) => {
             const tint = Tints[item.tint];
             return (
-              <Pressable
+              <View
                 key={item.name}
-                accessibilityRole="button"
-                accessibilityHint="Removes it from your fridge"
-                onLongPress={() => removeItem(item.name)}
                 style={[
                   styles.magnet,
                   { backgroundColor: tint.bg, boxShadow: `0 2px 0 ${tint.edge}`, transform: [{ rotate: TILTS[i % TILTS.length] }] },
                 ]}>
                 <Text style={styles.magnetText}>{item.name}</Text>
-              </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${item.name} from your fridge`}
+                  onPress={() => removeItem(item.name)}
+                  hitSlop={6}
+                  style={styles.removeIngredientButton}>
+                  <Ionicons name="close" size={14} color={tint.ink} />
+                </Pressable>
+              </View>
             );
           })}
         </View>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Allergies</Text>
-        <View style={styles.allergyRow}>
-          {ALLERGEN_OPTIONS.map((allergy) => {
-            const active = allergies.includes(allergy);
-            return (
-              <Pressable
-                key={allergy}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                onPress={() => toggleAllergy(allergy)}
-                style={[styles.allergyChip, active ? styles.allergyChipOn : styles.allergyChipOff]}>
-                <Text style={[styles.allergyChipText, active && styles.allergyChipTextOn]}>{allergy}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-        <Text style={styles.allergyDisclaimer}>Results aren’t allergy or nutrition advice — check labels and ingredients before eating.</Text>
-      </View>
-
-      {/* Use it up first */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Use it up first</Text>
-        <View style={styles.expiringRow}>
-          {EXPIRING.map((e, i) => (
-            <View key={e.name} style={styles.expiringCard}>
-              <Text style={styles.expiringName}>{e.name}</Text>
-              <Text style={[styles.expiringDays, { color: i === 0 ? Colors.accent : Colors.muted }]}>
-                {e.daysLeft} days left
-              </Text>
-            </View>
-          ))}
-        </View>
+        <Text style={styles.sectionTitle}>Allergy preferences</Text>
+        {allergenLoading && <Text style={styles.notice}>Loading allergen categories…</Text>}
+        {allergenError && <Text style={styles.allergenError}>{allergenError}</Text>}
+        {!allergenLoading && !allergenError && (
+          <View style={styles.allergenOptions}>
+            {allergenOptions.map((allergen) => {
+              const selected = allergies.includes(allergen);
+              return (
+                <Pressable
+                  key={allergen}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  onPress={() => toggleAllergy(allergen)}
+                  style={[styles.allergenOption, selected && styles.allergenOptionSelected]}>
+                  <Text style={[styles.allergenOptionText, selected && styles.allergenOptionTextSelected]}>
+                    {allergen}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+        <Text style={styles.notice}>
+          Recipe warnings show potential matches from this map, which may be inferred or product-dependent.
+          Always check the original recipe and product labels. This is not allergy-safety advice.
+        </Text>
       </View>
 
       {/* Actions */}
@@ -155,12 +256,22 @@ export default function FridgeScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Fridge Roulette: surprise me"
+            accessibilityState={{ disabled: rouletteLoading }}
+            disabled={rouletteLoading}
             onPress={fridgeRoulette}
             style={styles.rouletteButton}>
-            <Ionicons name="dice-outline" size={24} color="#FFFFFF" />
+            {rouletteLoading ? (
+              <Text style={styles.rouletteLoading}>…</Text>
+            ) : (
+              <Ionicons name="dice-outline" size={24} color="#FFFFFF" />
+            )}
           </Pressable>
         </View>
-        <Text style={styles.rouletteHint}>Dice = Fridge Roulette, a surprise recipe</Text>
+        {rouletteError ? (
+          <Text style={styles.rouletteError}>{rouletteError}</Text>
+        ) : (
+          <Text style={styles.rouletteHint}>Dice = Fridge Roulette, a surprise recipe</Text>
+        )}
       </View>
     </ScrollView>
   );
@@ -256,6 +367,35 @@ const styles = StyleSheet.create({
     outlineWidth: 0,
     outlineColor: 'transparent',
   },
+  ingredientStatus: {
+    fontFamily: Fonts.regular,
+    fontSize: 12,
+    color: Colors.muted,
+  },
+  ingredientValidation: {
+    gap: 8,
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    padding: 10,
+  },
+  ingredientError: {
+    fontFamily: Fonts.medium,
+    fontSize: 12,
+    lineHeight: 18,
+    color: Colors.accent,
+  },
+  ingredientAction: {
+    alignSelf: 'flex-start',
+    borderRadius: 10,
+    backgroundColor: Colors.successSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  ingredientActionText: {
+    fontFamily: Fonts.semibold,
+    fontSize: 12,
+    color: Colors.successDeep,
+  },
   inputButton: {
     width: 44,
     height: 44,
@@ -310,73 +450,65 @@ const styles = StyleSheet.create({
     paddingRight: 18,
   },
   magnet: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
     borderRadius: 12,
-    paddingVertical: 9,
-    paddingHorizontal: 13,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
   },
   magnetText: {
     fontFamily: Fonts.semibold,
     fontSize: 14,
     color: Colors.ink,
   },
+  removeIngredientButton: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.6)',
+  },
   section: {
     gap: 8,
   },
-  allergyRow: {
+  notice: {
+    fontFamily: Fonts.regular,
+    fontSize: 12,
+    color: Colors.muted,
+    lineHeight: 18,
+  },
+  allergenOptions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
-  allergyChip: {
-    minHeight: 34,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    borderWidth: 1.5,
-    justifyContent: 'center',
-  },
-  allergyChipOn: {
-    backgroundColor: Colors.ink,
-    borderColor: Colors.ink,
-  },
-  allergyChipOff: {
-    backgroundColor: Colors.surface,
+  allergenOption: {
+    borderRadius: 16,
+    borderWidth: 1,
     borderColor: Colors.border,
-  },
-  allergyChipText: {
-    fontFamily: Fonts.semibold,
-    fontSize: 12,
-    color: Colors.ink,
-    textTransform: 'capitalize',
-  },
-  allergyChipTextOn: {
-    color: '#FFFFFF',
-  },
-  allergyDisclaimer: {
-    fontFamily: Fonts.regular,
-    fontSize: 11,
-    color: Colors.muted,
-    lineHeight: 16,
-  },
-  expiringRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  expiringCard: {
-    flex: 1,
     backgroundColor: Colors.surface,
-    borderRadius: 14,
-    paddingVertical: 10,
     paddingHorizontal: 12,
-    gap: 2,
+    paddingVertical: 8,
   },
-  expiringName: {
-    fontFamily: Fonts.semibold,
-    fontSize: 14,
+  allergenOptionSelected: {
+    borderColor: Colors.accent,
+    backgroundColor: Colors.successSoft,
+  },
+  allergenOptionText: {
+    fontFamily: Fonts.medium,
+    fontSize: 13,
     color: Colors.ink,
   },
-  expiringDays: {
+  allergenOptionTextSelected: {
+    fontFamily: Fonts.bold,
+    color: Colors.successDeep,
+  },
+  allergenError: {
     fontFamily: Fonts.semibold,
     fontSize: 12,
+    color: Colors.accent,
   },
   actions: {
     flexDirection: 'row',
@@ -404,6 +536,18 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.ink,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  rouletteLoading: {
+    fontFamily: Fonts.bold,
+    fontSize: 20,
+    color: '#FFFFFF',
+  },
+  rouletteError: {
+    marginTop: 8,
+    fontFamily: Fonts.semibold,
+    fontSize: 12,
+    color: Colors.accent,
+    textAlign: 'right',
   },
   rouletteHint: {
     marginTop: 8,

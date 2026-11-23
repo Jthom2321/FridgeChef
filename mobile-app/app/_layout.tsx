@@ -38,8 +38,8 @@ export default function RootLayout() {
       <ThemeProvider value={theme}>
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="recipe" />
-          <Stack.Screen name="cook-mode" options={{ presentation: 'fullScreenModal' }} />
+          <Stack.Screen name="recommended-recipe" />
+          <Stack.Screen name="recommendation-cook-mode" options={{ presentation: 'fullScreenModal' }} />
         </Stack>
         <StatusBar style="dark" />
       </ThemeProvider>

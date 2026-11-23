@@ -2,6 +2,7 @@ import argparse
 import csv
 import re
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -37,6 +38,7 @@ BASICS = {"salt", "pepper", "black pepper", "oil", "olive oil", "vegetable oil",
 CLOSE_QUALIFIERS = {"yellow", "white", "red", "italian", "flat", "leaf"}
 
 
+@lru_cache(maxsize=8192)
 def normalize(value):
     phrase = " ".join(re.sub(r"[^a-z0-9 ]", " ", value.lower()).split())
     # Drop only explicitly listed preparation/size descriptors.
