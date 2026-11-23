@@ -38,14 +38,14 @@ def main():
         parser.error(str(exc))
     lines = ['FRIDGECHEF: PRACTICE COMPARISON',
              'Identical raw inputs and CSV for both versions. Before: original code.',
-             'After: improved matching, basics enabled. This is not hidden-set evaluation.',
+             'After: improved matching, basics enabled, plus weighted coverage and random baseline (seed 0). This is not hidden-set evaluation.',
              'For Jaccard/TF-IDF, an additional no-basics run isolates matching changes.', '']
     for number, pantry in enumerate(lists, 1):
         lines += [f'PRACTICE {number}: {pantry!r}']
         for label, module, recipes, methods, kwargs in [
             ('BEFORE', before, old_recipes, ['jaccard', 'tfidf'], {}),
             ('AFTER WITHOUT BASICS', after, new_recipes, ['jaccard', 'tfidf'], {'assume_basics': False}),
-            ('AFTER WITH BASICS', after, new_recipes, ['jaccard', 'tfidf', 'coverage'], {})]:
+            ('AFTER WITH BASICS', after, new_recipes, ['jaccard', 'tfidf', 'coverage', 'weighted', 'random'], {})]:
             for method in methods:
                 lines.append(f'{label}: {method}')
                 try:
